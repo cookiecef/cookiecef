@@ -15,10 +15,11 @@ app.post("/chat", async (req, res) => {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
       },
-      body: JSON.stringify({
-        model: "gpt-5",
-        messages,
-      }),
+body: JSON.stringify({
+  model: "g-68bafe8e49788191915882f907ccde3b-qvqyshp",
+  messages,
+}),
+
     });
     const data = await response.json();
     res.json(data);
