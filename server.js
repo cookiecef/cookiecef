@@ -28,8 +28,35 @@ let recipes = [];
 async function loadRecipesFromAPI() {
   try {
     console.log('🔄 טוען מתכונים מה-API של קוקישף...');
-    const res = await fetch('https://cookiecef.co.il/wp-json/cookiechef/v1/search?q=all');
-    const data = await res.json();
+
+    const res = await fetch('https://cookiecef.co.il/wp-json/cookiechef/v1/search?q=all', {
+      headers: {
+        'User-Agent': 'CookieChefBot/1.0 (+https://cookiecef.co.il)',
+        'Accept': 'application/json'
+      }
+    });
+
+    const text = await res.text();
+
+    // אם בטעות קיבלנו HTML ולא JSON
+    if (text.startsWith('<')) {
+      throw new Error('השרת קיבל HTML במקום JSON מהאתר');
+    }
+
+    const data = JSON.parse(text);
+
+    if (!data || !data.results) {
+      throw new Error('לא התקבלו תוצאות תקפות מה-API');
+    }
+
+    console.log(`✅ נטענו ${data.results.length} מתכונים מה-API של האתר`);
+    return data.results;
+
+  } catch (error) {
+    console.error('❌ שגיאה בטעינת מתכונים מה-API:', error);
+    return [];
+  }
+}
 
     if (data.status === 'success' && Array.isArray(data.results)) {
       recipes = data.results;
