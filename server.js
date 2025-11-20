@@ -21,12 +21,17 @@ app.use(express.json());
 
 let recipes = [];
 
-// === פונקציה לטעינת מתכונים מהאתר שלך ===
+/**
+ * === טעינת מתכונים מהאתר (WP REST API) ===
+ */
 async function loadRecipesFromAPI() {
   try {
     console.log('🔄 טוען מתכונים מה-API של קוקישף...');
 
-    const res = await fetch('https://cookiecef.co.il/wp-json/cookiechef/v1/search?q=all', {
+    // נשתמש במילת חיפוש אמיתית כדי לקבל JSON
+    const url = 'https://cookiecef.co.il/wp-json/cookiechef/v1/search?q=עוגיות';
+
+    const res = await fetch(url, {
       headers: {
         'User-Agent': 'CookieChefBot/1.0 (+https://cookiecef.co.il)',
         'Accept': 'application/json'
@@ -35,27 +40,31 @@ async function loadRecipesFromAPI() {
 
     const text = await res.text();
 
-    // אם בטעות קיבלנו HTML ולא JSON
-    if (text.startsWith('<')) {
+    // אם קיבלנו HTML במקום JSON
+    if (text.trim().startsWith('<')) {
       throw new Error('השרת קיבל HTML במקום JSON מהאתר');
     }
 
     const data = JSON.parse(text);
 
-    if (!data || !data.results) {
-      throw new Error('לא התקבלו תוצאות תקפות מה-API');
+    // בדיקה שהתקבלו תוצאות תקפות
+    if (!data || typeof data !== 'object' || !data.results) {
+      console.warn('⚠️ לא התקבלו תוצאות תקפות מה-API:', data);
+      return [];
     }
 
     console.log(`✅ נטענו ${data.results.length} מתכונים מה-API של האתר`);
     return data.results;
 
   } catch (error) {
-    console.error('❌ שגיאה בטעינת מתכונים מה-API:', error);
+    console.error('❌ שגיאה בטעינת מתכונים מה-API:', error.message);
     return [];
   }
 }
 
-// === פונקציה לעיצוב מתכון לתצוגה יפה ===
+/**
+ * === עיצוב תצוגת מתכון ===
+ */
 function formatRecipe(recipe) {
   return `
 🍰 ${recipe.title}
@@ -73,7 +82,9 @@ ${recipe.diet_tags ? `🥦 תגיות תזונה: ${recipe.diet_tags}` : ''}
 `.trim();
 }
 
-// === נקודת בדיקה בסיסית ===
+/**
+ * === בדיקה בסיסית שהשרת רץ ===
+ */
 app.get('/', (req, res) => {
   res.json({
     status: 'running',
@@ -82,7 +93,9 @@ app.get('/', (req, res) => {
   });
 });
 
-// === נקודת צ'אט ראשית ===
+/**
+ * === נקודת הצ'אט ===
+ */
 app.post('/chat', async (req, res) => {
   try {
     const { message } = req.body;
@@ -93,15 +106,13 @@ app.post('/chat', async (req, res) => {
 
     console.log(`💬 שאלה מהמשתמשת: ${message}`);
 
-    // חיפוש מתכונים רלוונטיים
-    const relevant = recipes.filter(r => {
-      const q = message.toLowerCase();
-      return (
-        r.title?.toLowerCase().includes(q) ||
-        r.tags?.toString().toLowerCase().includes(q) ||
-        r.ingredients_text?.toLowerCase().includes(q)
-      );
-    });
+    // סינון מתכונים רלוונטיים
+    const q = message.toLowerCase();
+    const relevant = recipes.filter(r =>
+      (r.title && r.title.toLowerCase().includes(q)) ||
+      (r.tags && r.tags.toString().toLowerCase().includes(q)) ||
+      (r.ingredients_text && r.ingredients_text.toLowerCase().includes(q))
+    );
 
     if (relevant.length === 0) {
       return res.json({
@@ -136,7 +147,7 @@ app.post('/chat', async (req, res) => {
       max_tokens: 1000,
     });
 
-    const reply = completion.choices[0].message.content;
+    const reply = completion.choices?.[0]?.message?.content || 'לא התקבלה תשובה.';
     console.log('✅ נשלחה תשובה מהבוט');
 
     res.json({ reply, found: relevant.length });
@@ -147,7 +158,9 @@ app.post('/chat', async (req, res) => {
   }
 });
 
-// === הפעלת השרת ===
+/**
+ * === הפעלת השרת ===
+ */
 app.listen(PORT, async () => {
   recipes = await loadRecipesFromAPI();
 
