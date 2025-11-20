@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
+import * as dotenv from 'dotenv';
+dotenv.config();
 import OpenAI from 'openai';
 import fetch from 'node-fetch';
 
