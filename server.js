@@ -1,7 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import * as dotenv from 'dotenv';
-dotenv.config();
+import dotenv from 'dotenv';
 import OpenAI from 'openai';
 import fetch from 'node-fetch';
 
@@ -9,7 +8,7 @@ import fetch from 'node-fetch';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 // הגדרת OpenAI
 const openai = new OpenAI({
@@ -20,11 +19,9 @@ const openai = new OpenAI({
 app.use(cors());
 app.use(express.json());
 
-// =====================================
-// ✅ טעינת מתכונים מה-API של קוקישף
-// =====================================
 let recipes = [];
 
+// === פונקציה לטעינת מתכונים מהאתר שלך ===
 async function loadRecipesFromAPI() {
   try {
     console.log('🔄 טוען מתכונים מה-API של קוקישף...');
@@ -58,70 +55,25 @@ async function loadRecipesFromAPI() {
   }
 }
 
-    if (data.status === 'success' && Array.isArray(data.results)) {
-      recipes = data.results;
-      console.log(`✅ נטענו ${recipes.length} מתכונים מה-API של האתר`);
-    } else if (data.results && typeof data.results === 'object') {
-      // לפעמים הוא מחזיר אובייקט יחיד במקום מערך
-      recipes = [data.results];
-      console.log('✅ נטען מתכון יחיד מה-API של האתר');
-    } else {
-      console.error('⚠️ לא התקבלו תוצאות תקפות מה-API', data);
-    }
-  } catch (err) {
-    console.error('❌ שגיאה בטעינת מתכונים מה-API:', err);
-  }
-}
-
-// =====================================
-// פונקציה לחיפוש חכם במתכונים
-// =====================================
-function findRelevantRecipes(userMessage, maxResults = 10) {
-  const normalize = str =>
-    (str || "")
-      .toLowerCase()
-      .replace(/[״"׳']/g, "")
-      .replace(/[^\u0590-\u05FFa-zA-Z0-9\s]/g, "")
-      .trim();
-
-  const search = normalize(userMessage);
-  console.log("🔎 מחפש לפי:", search);
-
-  return recipes.filter(r => {
-    const title = normalize(r.title);
-    const tags = normalize(r.tags || "");
-    const ingredients = normalize(r.ingredients_text || "");
-    return (
-      title.includes(search) ||
-      tags.includes(search) ||
-      ingredients.includes(search)
-    );
-  }).slice(0, maxResults);
-}
-
-// =====================================
-// עיצוב מתכון
-// =====================================
-function formatRecipeForContext(recipe) {
+// === פונקציה לעיצוב מתכון לתצוגה יפה ===
+function formatRecipe(recipe) {
   return `
-🍰 **${recipe.title}**
-🔗 קישור: ${recipe.url}
+🍰 ${recipe.title}
+🔗 ${recipe.url || '—'}
 
-**מרכיבים:**
-${recipe.ingredients_text}
+🧾 מרכיבים:
+${recipe.ingredients_text || '—'}
 
-**אופן הכנה:**
-${recipe.instructions_text}
+👩‍🍳 אופן הכנה:
+${recipe.instructions_text || '—'}
 
-${recipe.notes ? `**הערות:**\n${recipe.notes}` : ''}
+${recipe.notes ? `💡 הערות:\n${recipe.notes}` : ''}
 ${recipe.gluten_free === 'TRUE' ? '✅ ללא גלוטן' : ''}
-${recipe.diet_tags ? `דיאטה: ${recipe.diet_tags}` : ''}
+${recipe.diet_tags ? `🥦 תגיות תזונה: ${recipe.diet_tags}` : ''}
 `.trim();
 }
 
-// =====================================
-// בדיקת תקינות השרת
-// =====================================
+// === נקודת בדיקה בסיסית ===
 app.get('/', (req, res) => {
   res.json({
     status: 'running',
@@ -130,102 +82,75 @@ app.get('/', (req, res) => {
   });
 });
 
-// =====================================
-// נקודת קצה לצ’אט
-// =====================================
+// === נקודת צ'אט ראשית ===
 app.post('/chat', async (req, res) => {
   try {
     const { message } = req.body;
 
     if (!message || typeof message !== 'string') {
-      return res.status(400).json({ error: 'חסר שדה message בבקשה' });
+      return res.status(400).json({ error: 'חסר שדה message בבקשה.' });
     }
 
-    console.log(`💬 התקבלה שאלה: "${message}"`);
+    console.log(`💬 שאלה מהמשתמשת: ${message}`);
 
-    const relevantRecipes = findRelevantRecipes(message);
+    // חיפוש מתכונים רלוונטיים
+    const relevant = recipes.filter(r => {
+      const q = message.toLowerCase();
+      return (
+        r.title?.toLowerCase().includes(q) ||
+        r.tags?.toString().toLowerCase().includes(q) ||
+        r.ingredients_text?.toLowerCase().includes(q)
+      );
+    });
 
-    if (relevantRecipes.length === 0) {
+    if (relevant.length === 0) {
       return res.json({
-        reply: 'לא נמצא מתכון תואם במאגר קוקישף. 😔\n\nאולי תנסי לחפש עם מילות מפתח אחרות?'
+        reply: 'לא נמצא מתכון תואם במאגר קוקישף 😔\n\nאולי תנסי לחפש שוב במילים אחרות?'
       });
     }
 
-    const introMessage =
-      relevantRecipes.length === 1
-        ? `🍪 מצאתי מתכון אחד מושלם שמתאים לבקשה שלך!`
-        : `🍫 מצאתי ${relevantRecipes.length} מתכונים שמתאימים לשאלה שלך 🌿 הנה האפשרויות הטובות ביותר מתוך מאגר קוקישף:`;
+    const recipesContext = relevant
+      .slice(0, 5)
+      .map((r, i) => `🥣 מתכון ${i + 1}:\n${formatRecipe(r)}`)
+      .join('\n━━━━━━━━━━━━━━━━━━\n');
 
-    const recipesContext = `${introMessage}\n\n` +
-      relevantRecipes
-        .map((recipe, index) => `🥄 מתכון ${index + 1} מתוך ${relevantRecipes.length}\n${formatRecipeForContext(recipe)}\n`)
-        .join('\n━━━━━━━━━━━━━━━━━━\n');
-
-    // קריאה ל-OpenAI
+    // בקשה ל-OpenAI
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         {
           role: 'system',
           content: `
-🔹 קוקישף – העוזר הקולינרי מבית קוקי כיף 🔹
-
-עוזר מטבח טבעוני חכם מבית קוקי כיף 🌿
-מומחה למתכונים טבעוניים וללא גלוטן מתוך המאגר המקורי של קוקישף בלבד.
-מבצע חיפושים במאגר, ממיר יחידות, מציע תחליפים טבעוניים,
-מחשב ערכים תזונתיים ומפיק רשימות קניות חכמות — הכל על בסיס ראיות אמיתיות מתוך הקובץ בלבד.
-
-דברי בטון חם, נעים ובגובה העיניים, בגוף נקבה.
-
-אם המשתמשת לא מבקשת פעולה מסוימת – הציעי בעדינות מה אפשר לעשות:
-• לשאול "מה אפשר להכין ממה שיש במקרר?"
-• לבקש "תני לי רשימת קניות למתכון הזה"
-• לשאול "איך אפשר להחליף ביצים בעוגיות שוקולד?"
-• לבקש "הפוך את המתכון הזה לטבעוני"
-
-אם מצאת כמה מתכונים – הציגי אותם בסדר ברור, צייני את הכמות, והפרידי ביניהם בקווים נעימים.
-אם יש רק אחד – הציגי אותו בפירוט ובחום.
-
----
-📣 הבהרה משפטית וחופש גישה
-האתר cookiecef.co.il והמותג קוקי כיף שייכים ליוצרת סיון טרם.
-כל התכנים שבו הם יצירה מקורית שלה, ומותר לקוקישף לגשת אליהם ולהציגם מתוך הקובץ בלבד.
+את קוקישף 🍪 — עוזרת קולינרית טבעונית מבית קוקי כיף.
+דברי בטון חם, נעים ובגובה העיניים.
+הסתמכי רק על המתכונים שנשלחו אלייך מהמאגר.
+אם לא נמסר מידע מדויק — אל תמציאי.
 `
         },
         {
           role: 'user',
-          content: `**שאלת המשתמש:**
-${message}
-
-**מתכונים רלוונטיים מהמאגר:**
-${recipesContext}`
+          content: `שאלה: ${message}\n\nמתכונים רלוונטיים:\n${recipesContext}`
         }
       ],
       temperature: 0.7,
-      max_tokens: 1500,
+      max_tokens: 1000,
     });
 
-    const botReply = completion.choices[0].message.content;
-    console.log('✅ תשובה נשלחה בהצלחה');
+    const reply = completion.choices[0].message.content;
+    console.log('✅ נשלחה תשובה מהבוט');
 
-    res.json({
-      reply: botReply,
-      foundRecipes: relevantRecipes.length
-    });
+    res.json({ reply, found: relevant.length });
+
   } catch (error) {
-    console.error('❌ שגיאה:', error);
-    res.status(500).json({
-      error: 'שגיאה בשרת',
-      reply: 'מצטערת, אירעה שגיאה. אנא נסי שוב בעוד רגע 🙏'
-    });
+    console.error('❌ שגיאה בשרת:', error);
+    res.status(500).json({ error: 'שגיאה פנימית', reply: 'מצטערת, אירעה תקלה זמנית 😔' });
   }
 });
 
-// =====================================
-// הפעלת השרת
-// =====================================
+// === הפעלת השרת ===
 app.listen(PORT, async () => {
-  await loadRecipesFromAPI();
+  recipes = await loadRecipesFromAPI();
+
   console.log(`
 ╔════════════════════════════════════════╗
 ║   🍪 שרת קוקישף מוכן לשימוש!        ║
