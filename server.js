@@ -28,7 +28,7 @@ let recipes = [];
 async function loadRecipesFromAPI() {
   try {
     console.log('🔄 טוען מתכונים מה-API של קוקישף...');
-    const res = await fetch('https://cookiecef.co.il/wp-json/cookiechef/v1/search?q=');
+    const res = await fetch('https://cookiecef.co.il/wp-json/cookiechef/v1/search?q=all');
     const data = await res.json();
 
     if (data.status === 'success' && Array.isArray(data.results)) {
