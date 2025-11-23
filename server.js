@@ -1,24 +1,16 @@
-// ==========================
-// 🍪 CookieChef Server
-// ==========================
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
 
-// הגדרת משתני סביבה
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// חיבור ל־OpenAI
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-// חיבור ל־Supabase
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-// מאגרים בזיכרון
 let recipes = [];
 let subs = [];
 let nutrition = [];
@@ -28,9 +20,7 @@ let masterList = [];
 let pricebook = [];
 let mealPrep = [];
 
-// ==========================
-// עזר לניקוי טקסט
-// ==========================
+// ===== ניקוי טקסט וניקוד =====
 const stripPunct = (s) => s.replace(/["'()\-_,.?!:;·•]/g, " ").replace(/\s+/g, " ").trim();
 const normalizeHeb = (s) =>
   s
@@ -43,22 +33,7 @@ const normalizeHeb = (s) =>
     .replace(/[ץ]/g, "צ")
     .toLowerCase();
 
-const stopwords = new Set([
-  "עם",
-  "ו",
-  "של",
-  "ל",
-  "ה",
-  "את",
-  "על",
-  "vegan",
-  "טבעוני",
-  "טבעונית",
-  "ללא",
-  "גלוטן",
-  "מהאתר",
-]);
-
+const stopwords = new Set(["עם", "ו", "של", "ל", "ה", "את", "על", "vegan", "טבעוני", "טבעונית", "ללא", "גלוטן", "מהאתר"]);
 const eqMap = new Map([
   ["oreo", ["אוראו", "אוריאו"]],
   ["גבינה", ["צ׳יזקייק", "cheesecake", "cheese"]],
@@ -108,15 +83,11 @@ function scoreTitle(query, title) {
   return Math.min(s, 1);
 }
 
-// ==========================
-// טעינת נתונים מ־Supabase
-// ==========================
+// ===== טעינת הנתונים =====
 async function loadAll() {
   console.log("🔄 טוען נתונים מ־Supabase...");
 
-  const { data: recipesData, error: recipesError } = await supabase
-    .from("recipes_raw_view")
-    .select("*");
+  const { data: recipesData, error: recipesError } = await supabase.from("recipes_raw_view").select("*");
   if (recipesError) throw recipesError;
   recipes = recipesData || [];
 
@@ -138,19 +109,13 @@ async function loadAll() {
   const { data: priceData } = await supabase.from("pricebook_master (2)").select("*");
   pricebook = priceData || [];
 
-  const { data: mealData } = await supabase
-    .from("shopping_list_meal_prep_with_recipes (1)")
-    .select("*");
+  const { data: mealData } = await supabase.from("shopping_list_meal_prep_with_recipes (1)").select("*");
   mealPrep = mealData || [];
 
-  console.log(
-    `✅ נטענו ${recipes.length} מתכונים; ${subs.length} תחליפים; ${nutrition.length} תזונה; ${units.length} יחידות; ${veganLookup.length} טבעוני; ${masterList.length} מאסטר; ${pricebook.length} מחירון; ${mealPrep.length} הכנות`
-  );
+  console.log(`✅ נטענו ${recipes.length} מתכונים; ${subs.length} תחליפים; ${nutrition.length} תזונה; ${units.length} יחידות; ${veganLookup.length} טבעוני; ${masterList.length} מאסטר; ${pricebook.length} מחירון; ${mealPrep.length} הכנות`);
 }
 
-// ==========================
-// שליפת מתכון (Strict Mode)
-// ==========================
+// ===== שליפת מתכון =====
 function findBestRecipeRaw(query) {
   if (!recipes.length) return null;
   const scored = recipes
@@ -158,16 +123,14 @@ function findBestRecipeRaw(query) {
     .sort((a, b) => b.s - a.s);
 
   const top = scored[0];
-  if (!top || top.s < 0.3) return null;
+  if (!top || top.s < 0.15) return null; // ← הורדנו את הסף מ־0.3 ל־0.15
 
   const rec = top.r;
   const raw = rec.raw_text || rec.raw || rec.full_text || null;
   return raw ? String(raw) : null;
 }
 
-// ==========================
-// הגדרות CORS ושרת
-// ==========================
+// ===== CORS =====
 app.use(
   cors({
     origin: process.env.ALLOWED_ORIGIN || "https://cookiecef.co.il",
@@ -177,12 +140,8 @@ app.use(
 );
 app.use(express.json());
 
-// ==========================
-// ראוטים
-// ==========================
-app.get("/", (req, res) =>
-  res.json({ status: "ok", recipes: recipes.length, message: "🍪 קוקישף רצה בהצלחה!" })
-);
+// ===== ראוטים =====
+app.get("/", (req, res) => res.json({ status: "ok", recipes: recipes.length, message: "🍪 קוקישף רצה בהצלחה!" }));
 
 app.post("/chat", async (req, res) => {
   try {
@@ -192,18 +151,15 @@ app.post("/chat", async (req, res) => {
     const m = message.trim();
     const isRecipeRequest = /(^|\s)(מתכון|איך מכינים|תני לי|בא לי להכין)(\s|$)/.test(m);
 
-    // Strict Mode
     if (isRecipeRequest) {
       const raw = findBestRecipeRaw(m);
       if (!raw)
         return res.json({
-          reply:
-            "לא נמצא מתכון תואם במאגר קוקישף.\nהאם תרצי שאיצור עבורך גרסה חדשה בהשראת קוקישף?",
+          reply: "לא נמצא מתכון תואם במאגר קוקישף.\nהאם תרצי שאיצור עבורך גרסה חדשה בהשראת קוקישף?",
         });
       return res.send(raw);
     }
 
-    // otherwise smart contextual reply
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.4,
@@ -225,9 +181,7 @@ app.post("/chat", async (req, res) => {
   }
 });
 
-// ==========================
-// הפעלת השרת
-// ==========================
+// ===== הפעלת השרת =====
 app.listen(PORT, async () => {
   await loadAll();
   console.log(`🍪 קוקישף רצה על פורט ${PORT}`);
