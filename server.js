@@ -58,16 +58,26 @@ function jaccard(a,b){
   return uni ? inter/uni : 0;
 }
 
-function scoreTitle(query, title){
+// ===== דירוג חכם =====
+function scoreTitle(query, title) {
   const tq = tokenize(query);
-  const tt = tokenize(title||'');
+  const tt = tokenize(title || '');
   let s = jaccard(tq, tt);
-  const contentWords = tq.filter(t=>!stopwords.has(t));
-  const allIn = contentWords.every(t=>tt.includes(t));
-  if (allIn) s += 0.2;
-  const orderSimilar = normalizeHeb(title).includes(normalizeHeb(query)) || normalizeHeb(query).includes(normalizeHeb(title));
-  if (orderSimilar) s += 0.15;
-  return s;
+
+  const cleanQuery = normalizeHeb(query).replace(/['״׳׳’‘`]/g, '').trim();
+  const cleanTitle = normalizeHeb(title).replace(/['״׳׳’‘`]/g, '').trim();
+
+  const contentWords = tq.filter(t => !stopwords.has(t));
+  const allIn = contentWords.every(t => cleanTitle.includes(t));
+  if (allIn) s += 0.25;
+
+  const firstWord = contentWords[0];
+  if (firstWord && cleanTitle.startsWith(firstWord)) s += 0.15;
+
+  const orderSimilar = cleanTitle.includes(cleanQuery) || cleanQuery.includes(cleanTitle);
+  if (orderSimilar) s += 0.2;
+
+  return Math.min(s, 1);
 }
 
 // ===== טעינת נתונים מכל הטבלאות =====
@@ -97,9 +107,9 @@ async function loadAll() {
 function findBestRecipeRaw(query) {
   if (!recipes.length) return null;
   const scored = recipes.map(r => ({ r, s: scoreTitle(query, r.title || r.name || '') }))
-                        .sort((a,b)=>b.s - a.s);
+                        .sort((a, b) => b.s - a.s);
   const top = scored[0];
-  if (!top || top.s < 0.4) return null; // הורדנו רף מ-0.55 ל-0.4
+  if (!top || top.s < 0.25) return null;
   const rec = top.r;
   const raw = rec.raw_text || rec.raw || rec.full_text || null;
   return raw ? String(raw) : null;
