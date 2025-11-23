@@ -1,27 +1,18 @@
 {
-  "name": "cookiecef-chatbot-server",
+  "name": "cookiechef-chatbot-server",
   "version": "1.0.0",
-  "description": "שרת צ'אט לבוט מתכונים טבעוניים - קוקי שף",
-  "main": "server.js",
+  "description": "שרת הצ׳אט של קוקישף 🍪 מחובר ל-Supabase ול-OpenAI",
   "type": "module",
   "scripts": {
-    "start": "npm install && node server.js",
-    "dev": "node --watch server.js"
+    "prestart": "node install_supabase.js",
+    "start": "node server.js"
   },
-  "keywords": [
-    "chatbot",
-    "recipes",
-    "vegan",
-    "openai"
-  ],
-  "author": "Kuki Kef - Sivan",
-  "license": "ISC",
   "dependencies": {
+    "express": "^4.19.2",
     "cors": "^2.8.5",
-    "csv-parse": "^5.5.2",
-    "dotenv": "^16.6.1",
-    "express": "^4.18.2",
-    "node-fetch": "^3.3.2",
-    "openai": "^4.20.1"
+    "dotenv": "^16.4.5",
+    "openai": "^4.0.0",
+    "@supabase/supabase-js": "^2.45.0",
+    "node-fetch": "^3.3.2"
   }
 }
