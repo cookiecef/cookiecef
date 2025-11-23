@@ -1,7 +1,6 @@
 {
   "name": "cookiechef-chatbot-server",
   "version": "1.0.0",
-  "description": "שרת הצ׳אט של קוקישף 🍪 מחובר ל-Supabase ול-OpenAI",
   "type": "module",
   "scripts": {
     "prestart": "node install_supabase.js",
