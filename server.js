@@ -121,7 +121,12 @@ function buildAssistantContext() {
 }
 
 // ===== אפליקציה =====
-app.use(cors());
+import cors from 'cors';
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGIN || '*',
+  methods: ['GET','POST','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization']
+}));
 app.use(express.json());
 
 app.get('/', (req,res)=>res.json({ status: 'ok', recipes: recipes.length }));
