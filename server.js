@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import OpenAI from 'openai';
-import fetch from 'node-fetch';
+import { createClient } from '@supabase/supabase-js';
 
 // טעינת משתני סביבה
 dotenv.config();
@@ -15,6 +15,12 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// חיבור ל-Supabase
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -22,42 +28,22 @@ app.use(express.json());
 let recipes = [];
 
 /**
- * === טעינת מתכונים מהאתר (WP REST API) ===
+ * === טעינת מתכונים מ-Supabase ===
  */
 async function loadRecipesFromAPI() {
   try {
-    console.log('🔄 טוען מתכונים מה-API של קוקישף...');
+    console.log('🔄 טוען מתכונים מ-Supabase...');
 
-    // נשתמש במילת חיפוש אמיתית כדי לקבל JSON
-    const url = 'https://cookiecef.co.il/wp-json/cookiechef/v1/search?q=עוגיות';
+    const { data, error } = await supabase
+      .from(process.env.SUPABASE_TABLE)
+      .select('*');
 
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'CookieChefBot/1.0 (+https://cookiecef.co.il)',
-        'Accept': 'application/json'
-      }
-    });
+    if (error) throw error;
 
-    const text = await res.text();
-
-    // אם קיבלנו HTML במקום JSON
-    if (text.trim().startsWith('<')) {
-      throw new Error('השרת קיבל HTML במקום JSON מהאתר');
-    }
-
-    const data = JSON.parse(text);
-
-    // בדיקה שהתקבלו תוצאות תקפות
-    if (!data || typeof data !== 'object' || !data.results) {
-      console.warn('⚠️ לא התקבלו תוצאות תקפות מה-API:', data);
-      return [];
-    }
-
-    console.log(`✅ נטענו ${data.results.length} מתכונים מה-API של האתר`);
-    return data.results;
-
+    console.log(`✅ נטענו ${data.length} מתכונים מה-Supabase`);
+    return data;
   } catch (error) {
-    console.error('❌ שגיאה בטעינת מתכונים מה-API:', error.message);
+    console.error('❌ שגיאה בטעינת מתכונים מ-Supabase:', error.message);
     return [];
   }
 }
@@ -88,7 +74,7 @@ ${recipe.diet_tags ? `🥦 תגיות תזונה: ${recipe.diet_tags}` : ''}
 app.get('/', (req, res) => {
   res.json({
     status: 'running',
-    message: '🍪 שרת קוקישף מחובר ל-API של האתר!',
+    message: '🍪 שרת קוקישף מחובר ל-Supabase!',
     recipesLoaded: recipes.length
   });
 });
