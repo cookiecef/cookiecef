@@ -9,13 +9,14 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 10000;
 
+// הגדרת OpenAI
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // חיבור ל-Supabase
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-// ===== מאגרים בזיכרון לשימוש כללי (לא לשליפת מתכון במצב Strict) =====
-let recipes = []; // מטבלת recipes_enriched_with_tags_new (לצורכי חיפוש בלבד)
+// ===== מאגרי נתונים בזיכרון =====
+let recipes = [];
 let subs = [];
 let nutrition = [];
 let units = [];
@@ -24,7 +25,7 @@ let masterList = [];
 let pricebook = [];
 let mealPrep = [];
 
-// ------- עזר לנרמול טקסט בעברית/אנגלית --------
+// ===== פונקציות עזר =====
 const stripPunct = s => s.replace(/[\"'()\-_,.?!:;·•]/g, ' ').replace(/\s+/g,' ').trim();
 const normalizeHeb = s => s
   .replace(/[״״”“„]/g, '"')
@@ -43,7 +44,6 @@ const eqMap = new Map([
 function tokenize(q){
   let s = normalizeHeb(stripPunct(q));
   let toks = s.split(' ').filter(t=>t && !stopwords.has(t));
-  // הרחבת שקילויות
   const expanded = [];
   for (const t of toks) {
     expanded.push(t);
@@ -53,7 +53,6 @@ function tokenize(q){
       }
     }
   }
-  // ייחוד
   return Array.from(new Set(expanded));
 }
 
@@ -68,7 +67,6 @@ function scoreTitle(query, title){
   const tq = tokenize(query);
   const tt = tokenize(title||'');
   let s = jaccard(tq, tt);
-  // בונוסים
   const contentWords = tq.filter(t=>!stopwords.has(t));
   const allIn = contentWords.every(t=>tt.includes(t));
   if (allIn) s += 0.15;
@@ -81,9 +79,9 @@ function scoreTitle(query, title){
 async function loadAll() {
   console.log('🔄 טוען נתונים מ-Supabase...');
 
-  // מתכונים (לשליפה Strict צריך raw_text)
+  // מתכונים (Strict Mode דרך VIEW עם raw_text)
   {
-    const { data, error } = await supabase.from('recipes_enriched_with_tags_new').select('*');
+    const { data, error } = await supabase.from('recipes_raw_view').select('*');
     if (error) throw error;
     recipes = data || [];
   }
@@ -109,45 +107,27 @@ async function loadAll() {
   // הכנות/תכנון שבועי
   { const { data, error } = await supabase.from('shopping_list_meal_prep_with_recipes (1)').select('*'); if (error) throw error; mealPrep = data||[]; }
 
-  console.log(`✅ נטענו ${recipes.length} מתכונים; ${subs.length} תחליפים; ${nutrition.length} ערכי תזונה; ${units.length} יחידות/צפיפויות; ${veganLookup.length} פריטים טבעוניים; ${masterList.length} מאסטר; ${pricebook.length} מחירון; ${mealPrep.length} הכנות`);
+  console.log(`✅ נטענו ${recipes.length} מתכונים; ${subs.length} תחליפים; ${nutrition.length} ערכי תזונה; ${units.length} יחידות; ${veganLookup.length} פריטים טבעוניים; ${masterList.length} מאסטר; ${pricebook.length} מחירון; ${mealPrep.length} הכנות`);
 }
 
-// ===== Strict Mode: שליפת מתכון גולמי בדיוק כפי שהוא =====
+// ===== חיפוש חכם ושליפה מדויקת =====
 function findBestRecipeRaw(query) {
   if (!recipes.length) return null;
-
-  // דירוג לפי ציון
-  const scored = recipes
-    .map(r => ({ r, s: scoreTitle(query, r.title || r.name || '') }))
-    .sort((a,b)=>b.s - a.s);
-
+  const scored = recipes.map(r => ({ r, s: scoreTitle(query, r.title || r.name || '') }))
+                        .sort((a,b)=>b.s - a.s);
   const top = scored[0];
-  if (!top || top.s < 0.55) {
-    // אם יש 2–3 התאמות בינוניות אפשר היה להציג שמות לבחירה — כאן נשמור על ההנחיות הפשוטות
-    return null;
-  }
-
+  if (!top || top.s < 0.55) return null;
   const rec = top.r;
-
-  // צפי לשדה שמכיל הטקסט המקורי כפי שבקובץ
   const raw = rec.raw_text || rec.raw || rec.full_text || null;
-
   return raw ? String(raw) : null;
 }
 
-// ===== עיצוב תשובה רגילה (לא Strict) =====
+// ===== תזמון תשובות רגילות =====
 function buildAssistantContext() {
-  return {
-    substitutions: subs,
-    nutrition,
-    units,
-    veganLookup,
-    masterList,
-    pricebook,
-    mealPrep
-  };
+  return { substitutions: subs, nutrition, units, veganLookup, masterList, pricebook, mealPrep };
 }
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 
@@ -156,30 +136,23 @@ app.get('/', (req,res)=>{
   res.json({ status: 'running', message: '🍪 שרת קוקישף מחובר ל-Supabase!', recipesLoaded: recipes.length });
 });
 
-// נקודת צ'אט אחת שמכבדת Strict Mode
+// צ'אט
 app.post('/chat', async (req,res)=>{
   try {
     const { message } = req.body || {};
-    if (!message || typeof message !== 'string') {
+    if (!message || typeof message !== 'string')
       return res.status(400).json({ error: 'חסר שדה message בבקשה.' });
-    }
 
     const m = message.trim();
-
-    // זיהוי כוונה של \"בקשת מתכון\" (פשוט אך יעיל)
     const isRecipeRequest = /(^|\s)(מתכון|איך מכינים|תני לי|בא לי להכין)(\s|$)/.test(m);
 
     if (isRecipeRequest) {
-      // Strict Mode → להחזיר רק את הטקסט המקורי
       const raw = findBestRecipeRaw(m);
-      if (!raw) {
+      if (!raw)
         return res.json({ reply: 'לא נמצא מתכון תואם במאגר קוקישף.\nהאם תרצי שאיצור עבורך גרסה חדשה בהשראת קוקישף?' });
-      }
-      // החזרה מילה במילה, ללא קישוטים
       return res.send(raw);
     }
 
-    // אחרת — תשובה חכמה נעזרת מאגרים (תחליפים, יחידות, תזונה וכו')
     const ctx = buildAssistantContext();
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
@@ -190,16 +163,12 @@ app.post('/chat', async (req,res)=>{
           role: 'system',
           content: `את קוקישף 🍪 — עוזרת קולינרית טבעונית מבית קוקי כיף.
 דברי בטון חם, נעים ובגובה העיניים.
-במידע תומך (תחליפים, המרות, תזונה, רשימות קניה) מותר להשתמש בטבלאות: substitutions_clean, nutrition_lookup_v2, units_densities_lookup_v2, vegan_lookup_full (2), master_list_items (1), pricebook_master (2), shopping_list_meal_prep_with_recipes (1).
-כאשר משתמשת מבקשת מתכון — יש להחזיר אך ורק את הטקסט המקורי מתוך recipes_enriched_with_tags_new.csv (Strict Mode), ללא קישוטים/שכתוב.`
+השתמשי בנתוני Supabase (תחליפים, תזונה, יחידות, מחירים, תפריטים).
+כאשר מבקשת מתכון — החזירי רק את הטקסט המקורי מתוך recipes_raw_view.`
         },
-        {
-          role: 'user',
-          content: `שאלה: ${m}\n\nמאגרים זמינים (תמצית):\n- תחליפים: ${subs.length}\n- תזונה: ${nutrition.length}\n- יחידות/צפיפויות: ${units.length}\n- טבעוני: ${veganLookup.length}\n- מאסטר: ${masterList.length}\n- מחירון: ${pricebook.length}\n- הכנות: ${mealPrep.length}`
-        }
+        { role: 'user', content: m }
       ]
     });
-
     const reply = completion.choices?.[0]?.message?.content || 'לא התקבלה תשובה.';
     res.json({ reply });
   } catch (err) {
@@ -208,7 +177,7 @@ app.post('/chat', async (req,res)=>{
   }
 });
 
-// הפעלת השרת
+// ===== הפעלת השרת =====
 app.listen(PORT, async ()=>{
   await loadAll();
   console.log(`
