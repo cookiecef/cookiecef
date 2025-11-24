@@ -39,6 +39,7 @@ const eqMap = new Map([
   ["גבינה", ["צ׳יזקייק", "cheesecake", "cheese"]],
   ["עוגיות", ["עוגיה", "cookies", "cookie", "קוקי"]],
   ["עוגת גבינה", ["גבינה"]],
+  ["צ'יפס", ["ציפס", "chips", "chip"]],
 ]);
 
 function tokenize(q) {
@@ -62,13 +63,12 @@ function jaccard(a, b) {
   return uni ? inter / uni : 0;
 }
 
-// ===== דירוג חכם במיוחד =====
+// ===== דירוג חכם עם משקל לעוגיות וצ'יפס =====
 function scoreTitle(query, title) {
   const tq = tokenize(query);
   const tt = tokenize(title || "");
   let s = jaccard(tq, tt);
 
-  // ניקוי מיוחד לגרשיים, ניקוד, ותווים לא רגילים
   const cleanQuery = normalizeHeb(query)
     .replace(/['״׳’‘`]/g, "")
     .replace(/צ׳/g, "צ")
@@ -82,8 +82,13 @@ function scoreTitle(query, title) {
     .trim();
 
   const contentWords = tq.filter((t) => !stopwords.has(t));
+
+  // ✅ תוספת ניקוד למילים "עוגיות" ו-"צ'יפס"
+  if (cleanTitle.includes("עוגיות")) s += 0.4;
+  if (cleanTitle.includes("ציפס") || cleanTitle.includes("צ'יפס")) s += 0.3;
+
   const allIn = contentWords.every((t) => cleanTitle.includes(t));
-  if (allIn) s += 0.35;
+  if (allIn) s += 0.25;
 
   const firstWord = contentWords[0];
   if (firstWord && cleanTitle.startsWith(firstWord)) s += 0.15;
@@ -134,7 +139,7 @@ function findBestRecipeRaw(query) {
     .sort((a, b) => b.s - a.s);
 
   const top = scored[0];
-  if (!top || top.s < 0.05) return null;
+  if (!top || top.s < 0.1) return null;
 
   console.log("🔍 TOP MATCH:", top.r.title, "→", top.s);
 
@@ -170,7 +175,7 @@ app.post("/chat", async (req, res) => {
         return res.json({
           reply: "לא נמצא מתכון תואם במאגר קוקישף.\nהאם תרצי שאיצור עבורך גרסה חדשה בהשראת קוקישף?",
         });
-      return res.json({ reply: raw }); // ✅ נשלח כתשובת JSON תקינה
+      return res.json({ reply: raw });
     }
 
     const completion = await openai.chat.completions.create({
