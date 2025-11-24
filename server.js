@@ -44,7 +44,7 @@ function formatRecipeHTML(raw) {
 
   // ---- מצרכים ----
   const ingredients = parts.ingredients
-    .split(/(?<=\\)) |(?<=גרם) |(?<=כוס) |(?<=כפית) |(?<=כפות) /)
+    .split(/\\s(?=\\d|כוס|גרם|כפית|כפות|מ״ל|מיליליטר)/)
     .map(l => l.trim())
     .filter(l => l.length > 1);
 
@@ -53,10 +53,9 @@ function formatRecipeHTML(raw) {
   // ---- שלבים ----
   const steps = parts.steps
     .replace(/\*\*/g, "")
-    .replace(/(\\d+)\\./g, "\n$1.")
-    .split(/\n+/)
-    .filter(l => /^\d+\./.test(l))
-    .map(l => l.replace(/^\\d+\\.\\s*/, "").trim());
+    .split(/\\s*(?=\\d+\\.)/)
+    .map(l => l.replace(/^\\d+\\.\\s*/, "").trim())
+    .filter(Boolean);
 
   const stepsHTML = steps.map(s => `<li>${s}</li>`).join("");
 
