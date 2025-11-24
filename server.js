@@ -15,11 +15,7 @@ let recipes = [];
 
 // ניקוי טקסט
 function cleanText(t) {
-  return t
-    .replace(/\\n/g, "\n")
-    .replace(/\r/g, "")
-    .replace(/קודם\s*הבא/gi, "")
-    .trim();
+  return t.replace(/\\n/g, "\n").replace(/\r/g, "").replace(/קודם\s*הבא/gi, "").trim();
 }
 
 // חילוץ חלקים לפי מילות מפתח
@@ -27,7 +23,6 @@ function splitSections(raw) {
   const parts = { title: "", ingredients: "", steps: "", notes: "" };
   let section = "title";
   const lines = cleanText(raw).split(/\n+/).map(l => l.trim()).filter(Boolean);
-
   for (const l of lines) {
     if (/מצרכים|מרכיבים|🧾/.test(l)) { section = "ingredients"; continue; }
     if (/אופן הכנה|שלבי הכנה|👩‍🍳/.test(l)) { section = "steps"; continue; }
@@ -37,53 +32,45 @@ function splitSections(raw) {
   return parts;
 }
 
-// יצירת HTML מעוצב
+// יצירת HTML
 function formatRecipeHTML(raw) {
   if (!raw) return "";
   const parts = splitSections(raw);
 
-  // ---- מצרכים ----
   const ingredients = parts.ingredients
-    .split(/\\s(?=\\d|כוס|גרם|כפית|כפות|מ״ל|מיליליטר)/)
+    .split(/\s+/)
+    .filter(w => w.length > 1)
+    .join(" ")
+    .split(/(?=\d|\*|כוס|גרם|כפות|כפית|מ״ל)/)
     .map(l => l.trim())
-    .filter(l => l.length > 1);
-
+    .filter(Boolean);
   const ingredientsHTML = ingredients.map(i => `<li>${i}</li>`).join("");
 
-  // ---- שלבים ----
   const steps = parts.steps
     .replace(/\*\*/g, "")
-    .split(/\\s*(?=\\d+\\.)/)
-    .map(l => l.replace(/^\\d+\\.\\s*/, "").trim())
-    .filter(Boolean);
-
-  const stepsHTML = steps.map(s => `<li>${s}</li>`).join("");
-
-  // ---- הערות ----
-  const notes = parts.notes
-    .split(/(?<=[.!?])\\s+/)
+    .split(/\d+\./)
+    .map(s => s.trim())
     .filter(Boolean)
+    .map(s => `<li>${s}</li>`)
+    .join("");
+
+  const notes = parts.notes
+    .split(/(?<=[.!?])\s+/)
     .map(n => `<li>${n.trim()}</li>`)
     .join("");
 
-  const title = (parts.title || "").replace(/^🍰\\s*/, "").trim();
+  const title = (parts.title || "").replace(/^🍰\s*/, "").trim();
 
   return `
   <div style="direction:rtl;text-align:right;font-family:'Assistant',sans-serif;line-height:1.8;color:#4a2c06;background:#fffaf4;padding:20px;border-radius:12px;">
-    <p style="margin:0 0 10px 0;">🍪 הנה אחד המתכונים המעולים מהבלוג של קוקי כיף!<br>(יש עוד גרסאות באתר 💚)</p>
-    ${title ? `<h2 style="margin:4px 0 12px 0;">${title}</h2>` : ""}
-
-    <h3 style="margin:10px 0 6px 0;">🧾 מצרכים</h3>
-    <ul style="margin:0 0 12px 0;padding-inline-start:20px;">${ingredientsHTML}</ul>
-
-    <h3 style="margin:10px 0 6px 0;">👩‍🍳 אופן הכנה</h3>
-    <ol style="margin:0;padding-inline-start:20px;">${stepsHTML}</ol>
-
-    ${notes ? `<h3 style="margin:12px 0 6px 0;">📌 הערות והמרות</h3><ul style="margin:0;padding-inline-start:20px;">${notes}</ul>` : ""}
+    <p>🍪 הנה אחד המתכונים המעולים מהבלוג של קוקי כיף!<br>(יש עוד גרסאות באתר 💚)</p>
+    ${title ? `<h2>${title}</h2>` : ""}
+    <h3>🧾 מצרכים</h3><ul>${ingredientsHTML}</ul>
+    <h3>👩‍🍳 אופן הכנה</h3><ol>${steps}</ol>
+    ${notes ? `<h3>📌 הערות והמרות</h3><ul>${notes}</ul>` : ""}
   </div>`;
 }
 
-// שליפת מתכון
 function findBestRecipeRaw(query) {
   if (!recipes.length) return null;
   const lower = query.toLowerCase();
@@ -92,9 +79,9 @@ function findBestRecipeRaw(query) {
   return raw ? String(raw) : null;
 }
 
-// טעינת מתכונים
 async function loadAll() {
-  const { data } = await supabase.from("recipes_raw_view").select("*");
+  const { data, error } = await supabase.from("recipes_raw_view").select("*");
+  if (error) console.error("❌ שגיאה בטעינה:", error.message);
   recipes = data || [];
   console.log(`✅ נטענו ${recipes.length} מתכונים`);
 }
