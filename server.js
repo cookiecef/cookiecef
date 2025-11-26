@@ -1,4 +1,4 @@
-// Updated: 26.11.2025 - מערכת חיפוש משופרת
+// Updated: 26.11.2025 - תיקון שמות טבלאות ועמודות
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -77,7 +77,7 @@ function findBestRecipeRaw(query) {
   
   if (exactMatch) {
     console.log(`✅ התאמה מדויקת: ${exactMatch.title}`);
-    return exactMatch.raw_text || exactMatch.raw || exactMatch.full_text || null;
+    return combineRecipeText(exactMatch);
   }
 
   // שלב 2: חיפוש כוללני (contains)
@@ -88,7 +88,7 @@ function findBestRecipeRaw(query) {
   
   if (partialMatch) {
     console.log(`✅ התאמה חלקית: ${partialMatch.title}`);
-    return partialMatch.raw_text || partialMatch.raw || partialMatch.full_text || null;
+    return combineRecipeText(partialMatch);
   }
 
   // שלב 3: חיפוש מילות מפתח (fuzzy)
@@ -103,11 +103,26 @@ function findBestRecipeRaw(query) {
   if (matches.length > 0) {
     const best = matches[0];
     console.log(`✅ התאמה חכמה (${best.score}%): ${best.recipe.title}`);
-    return best.recipe.raw_text || best.recipe.raw || best.recipe.full_text || null;
+    return combineRecipeText(best.recipe);
   }
 
   console.log("❌ לא נמצא מתכון תואם");
   return null;
+}
+
+// חיבור המצרכים והשלבים למתכון אחד
+function combineRecipeText(recipe) {
+  const title = recipe.title || "";
+  const ingredients = recipe.ingredients_text || "";
+  const instructions = recipe.instructions_text || "";
+  
+  if (!ingredients && !instructions) {
+    console.log("⚠️ המתכון ריק (אין מצרכים ושלבים)");
+    return null;
+  }
+  
+  // חיבור הכל לפורמט אחיד
+  return `${title}\n\n🧾 מצרכים\n${ingredients}\n\n👩‍🍳 אופן הכנה\n${instructions}`;
 }
 
 // ===============================
@@ -177,7 +192,9 @@ function formatRecipeHTML(raw) {
 
 async function loadAll() {
   console.log("⏳ טוען מתכונים מ-Supabase...");
-  const { data, error } = await supabase.from("recipes_raw_view").select("*");
+  const { data, error } = await supabase
+    .from("recipes_enriched_with_tags_new")
+    .select("id, title, ingredients_text, instructions_text");
   
   if (error) {
     console.error("❌ שגיאה בטעינה:", error.message);
