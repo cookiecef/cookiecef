@@ -1,3 +1,4 @@
+// Updated: 26.11.2025 - מערכת חיפוש משופרת
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -266,24 +267,3 @@ app.listen(PORT, async () => {
   await loadAll();
   console.log(`🍪 קוקישף רץ ומוכן! https://cookiecef.onrender.com`);
 });
-```
-
----
-
-## ✅ כל הקוד - 268 שורות מלאות!
-
-**עכשיו:**
-1. **העתיקי את כל הקוד** (מהשורה הראשונה עד האחרונה)
-2. **GitHub** → פתחי את `server.js`
-3. **Edit** → **Ctrl+A** (בחירת הכל) → **Delete**
-4. **הדביקי את הקוד החדש**
-5. **Commit changes**
-
-אחרי זה Render יעשה deploy אוטומטי ותראי בלוגים:
-```
-🚀 שרת מתחיל על פורט 10000...
-⏳ טוען מתכונים מ-Supabase...
-✅ נטענו 269 מתכונים
-📋 דוגמאות כותרות:
-   - עוגיות שוקולד צ'יפס טבעוניות
-🍪 קוקישף רץ ומוכן!
