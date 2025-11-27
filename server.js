@@ -1,4 +1,4 @@
-// Updated: 26.11.2025 - שימוש ב-GPT לעיבוד מתכונים
+// Updated: 26.11.2025 - תיקון מרווחים והוספת הערות
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -124,7 +124,6 @@ function findBestRecipeRaw(query) {
   return null;
 }
 
-// שימוש ב-GPT לעיבוד המתכון לפורמט מסודר
 async function formatRecipeWithGPT(recipe) {
   const title = recipe.title || "";
   const ingredients = recipe.ingredients_text || "";
@@ -142,32 +141,38 @@ ${instructions}
 
 החזר HTML בפורמט הבא בדיוק (ללא markdown, ללא \`\`\`):
 
-<div style="direction:rtl;text-align:right;font-family:'Assistant',sans-serif;line-height:1.8;color:#4a2c06;background:#fffaf4;padding:20px;border-radius:12px;">
-  <p>🍪 הנה אחד המתכונים המעולים מהבלוג של קוקי כיף!<br>(יש עוד גרסאות באתר 💚)</p>
-  <h2>${title}</h2>
-  <h3>🧾 מצרכים</h3>
-  <ul>
-    <li>פריט ראשון</li>
-    <li>פריט שני</li>
+<div style="direction:rtl;text-align:right;font-family:'Assistant',sans-serif;line-height:1.4;color:#4a2c06;background:#fffaf4;padding:20px;border-radius:12px;">
+  <p style="margin-bottom:15px;">🍪 הנה אחד המתכונים המעולים מהבלוג של קוקי כיף!<br>(יש עוד גרסאות באתר 💚)</p>
+  <h2 style="margin:15px 0 10px 0;">${title}</h2>
+  <h3 style="margin:15px 0 8px 0;">🧾 מצרכים</h3>
+  <ul style="margin:0 0 15px 0;padding-right:20px;">
+    <li style="margin-bottom:5px;">פריט ראשון</li>
+    <li style="margin-bottom:5px;">פריט שני</li>
   </ul>
-  <h3>👩‍🍳 אופן הכנה</h3>
-  <ol>
-    <li>שלב ראשון</li>
-    <li>שלב שני</li>
+  <h3 style="margin:15px 0 8px 0;">👩‍🍳 אופן הכנה</h3>
+  <ol style="margin:0 0 15px 0;padding-right:20px;">
+    <li style="margin-bottom:8px;">שלב ראשון</li>
+    <li style="margin-bottom:8px;">שלב שני</li>
   </ol>
+  <h3 style="margin:15px 0 8px 0;">📌 הערות והמרות</h3>
+  <ul style="margin:0;padding-right:20px;">
+    <li style="margin-bottom:8px;">הערה ראשונה</li>
+  </ul>
 </div>
 
 חשוב:
 - כל מצרך בשורה נפרדת ב-<li>
 - כל שלב בשורה נפרדת ב-<li>
 - אל תוסיף כוכביות או מספרים - רק את התוכן
+- אם יש הערות והמרות בטקסט - הוסף אותן בסעיף נפרד
+- שמור על הסטיילים בדיוק כמו בדוגמה
 - החזר רק HTML, ללא הסבר`;
 
   try {
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.3,
-      max_tokens: 1500,
+      max_tokens: 2000,
       messages: [
         { role: "user", content: prompt }
       ]
@@ -175,14 +180,12 @@ ${instructions}
 
     let html = completion.choices?.[0]?.message?.content || "";
     
-    // ניקוי markdown אם קיים
     html = html.replace(/```html\n?/g, "").replace(/```\n?/g, "").trim();
     
     return html;
     
   } catch (error) {
     console.error("❌ שגיאה בעיבוד עם GPT:", error.message);
-    // fallback - החזר משהו בסיסי
     return `<div style="direction:rtl;padding:20px;">
       <h2>${title}</h2>
       <p>שגיאה בטעינת המתכון. נסי שוב!</p>
@@ -244,12 +247,10 @@ app.post("/chat", async (req, res) => {
         });
       }
       
-      // עיבוד המתכון עם GPT
       const formattedHTML = await formatRecipeWithGPT(recipe);
       return res.json({ reply: formattedHTML });
     }
 
-    // שאלות כלליות
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.4,
