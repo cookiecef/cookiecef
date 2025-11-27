@@ -1,4 +1,4 @@
-// Updated: 26.11.2025 - תיקון זיהוי וניקוי שאילתות
+// Updated: 26.11.2025 - תיקון תצוגת מצרכים ושלבים
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -190,26 +190,28 @@ function formatRecipeHTML(raw) {
   if (!raw) return "";
   const parts = splitSections(raw);
 
+  // פיצול מצרכים לפי שורות (לא לפי רווחים!)
   const ingredients = parts.ingredients
-    .split(/\s+/)
-    .filter(w => w.length > 1)
-    .join(" ")
-    .split(/(?=\d|\*|כוס|גרם|כפות|כפית|מ״ל)/)
+    .split(/\n/)
     .map(l => l.trim())
     .filter(Boolean);
   const ingredientsHTML = ingredients.map(i => `<li>${i}</li>`).join("");
 
+  // פיצול שלבים לפי שורות
   const steps = parts.steps
     .replace(/\*\*/g, "")
-    .split(/\d+\./)
-    .map(s => s.trim())
+    .split(/\n/)
+    .map(s => s.replace(/^\d+\.\s*/, "").trim())  // הסרת המספור
     .filter(Boolean)
     .map(s => `<li>${s}</li>`)
     .join("");
 
+  // פיצול הערות לפי שורות
   const notes = parts.notes
-    .split(/(?<=[.!?])\s+/)
-    .map(n => `<li>${n.trim()}</li>`)
+    .split(/\n/)
+    .map(n => n.replace(/^\*\s*/, "").trim())  // הסרת כוכביות
+    .filter(Boolean)
+    .map(n => `<li>${n}</li>`)
     .join("");
 
   const title = (parts.title || "").replace(/^🍰\s*/, "").trim();
