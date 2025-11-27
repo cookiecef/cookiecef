@@ -1,4 +1,4 @@
-// Updated: 26.11.2025 - תיקון מרווחים והוספת הערות
+// Updated: 26.11.2025 - תיקון מרווחים סופי
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -142,21 +142,21 @@ ${instructions}
 החזר HTML בפורמט הבא בדיוק (ללא markdown, ללא \`\`\`):
 
 <div style="direction:rtl;text-align:right;font-family:'Assistant',sans-serif;line-height:1.4;color:#4a2c06;background:#fffaf4;padding:20px;border-radius:12px;">
-  <p style="margin-bottom:15px;">🍪 הנה אחד המתכונים המעולים מהבלוג של קוקי כיף!<br>(יש עוד גרסאות באתר 💚)</p>
-  <h2 style="margin:15px 0 10px 0;">${title}</h2>
-  <h3 style="margin:15px 0 8px 0;">🧾 מצרכים</h3>
-  <ul style="margin:0 0 15px 0;padding-right:20px;">
-    <li style="margin-bottom:5px;">פריט ראשון</li>
-    <li style="margin-bottom:5px;">פריט שני</li>
+  <p style="margin-bottom:12px;">🍪 הנה אחד המתכונים המעולים מהבלוג של קוקי כיף!<br>(יש עוד גרסאות באתר 💚)</p>
+  <h2 style="margin:12px 0 8px 0;">${title}</h2>
+  <h3 style="margin:8px 0 5px 0;">🧾 מצרכים</h3>
+  <ul style="margin:0 0 10px 0;padding-right:20px;">
+    <li style="margin-bottom:4px;">פריט ראשון</li>
+    <li style="margin-bottom:4px;">פריט שני</li>
   </ul>
-  <h3 style="margin:15px 0 8px 0;">👩‍🍳 אופן הכנה</h3>
-  <ol style="margin:0 0 15px 0;padding-right:20px;">
-    <li style="margin-bottom:8px;">שלב ראשון</li>
-    <li style="margin-bottom:8px;">שלב שני</li>
+  <h3 style="margin:8px 0 5px 0;">👩‍🍳 אופן הכנה</h3>
+  <ol style="margin:0 0 10px 0;padding-right:20px;">
+    <li style="margin-bottom:6px;">שלב ראשון</li>
+    <li style="margin-bottom:6px;">שלב שני</li>
   </ol>
-  <h3 style="margin:15px 0 8px 0;">📌 הערות והמרות</h3>
+  <h3 style="margin:8px 0 5px 0;">📌 הערות והמרות</h3>
   <ul style="margin:0;padding-right:20px;">
-    <li style="margin-bottom:8px;">הערה ראשונה</li>
+    <li style="margin-bottom:6px;">הערה ראשונה</li>
   </ul>
 </div>
 
@@ -165,7 +165,7 @@ ${instructions}
 - כל שלב בשורה נפרדת ב-<li>
 - אל תוסיף כוכביות או מספרים - רק את התוכן
 - אם יש הערות והמרות בטקסט - הוסף אותן בסעיף נפרד
-- שמור על הסטיילים בדיוק כמו בדוגמה
+- שמור על הסטיילים בדיוק כמו בדוגמה (במיוחד המרווחים!)
 - החזר רק HTML, ללא הסבר`;
 
   try {
