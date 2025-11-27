@@ -1,4 +1,4 @@
-// Updated: 26.11.2025 - תיקון תצוגת מצרכים ושלבים
+// Updated: 26.11.2025 - תיקון פיצול מצרכים לפי כוכביות
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -190,29 +190,63 @@ function formatRecipeHTML(raw) {
   if (!raw) return "";
   const parts = splitSections(raw);
 
-  // פיצול מצרכים לפי שורות (לא לפי רווחים!)
-  const ingredients = parts.ingredients
-    .split(/\n/)
-    .map(l => l.trim())
-    .filter(Boolean);
+  // פיצול מצרכים לפי כוכביות (*) או שורות חדשות
+  const ingredientsRaw = parts.ingredients.trim();
+  let ingredients = [];
+  
+  if (ingredientsRaw.includes('*')) {
+    // אם יש כוכביות - פצל לפי כוכביות
+    ingredients = ingredientsRaw
+      .split('*')
+      .map(l => l.trim())
+      .filter(Boolean);
+  } else {
+    // אם אין כוכביות - פצל לפי שורות
+    ingredients = ingredientsRaw
+      .split(/\n/)
+      .map(l => l.trim())
+      .filter(Boolean);
+  }
+  
   const ingredientsHTML = ingredients.map(i => `<li>${i}</li>`).join("");
 
-  // פיצול שלבים לפי שורות
-  const steps = parts.steps
-    .replace(/\*\*/g, "")
-    .split(/\n/)
-    .map(s => s.replace(/^\d+\.\s*/, "").trim())  // הסרת המספור
-    .filter(Boolean)
-    .map(s => `<li>${s}</li>`)
-    .join("");
+  // פיצול שלבים לפי מספרים או שורות
+  const stepsRaw = parts.steps.replace(/\*\*/g, "").trim();
+  let steps = [];
+  
+  if (/^\d+\./.test(stepsRaw)) {
+    // יש מספור - פצל לפי מספרים
+    steps = stepsRaw
+      .split(/\d+\./)
+      .map(s => s.trim())
+      .filter(Boolean);
+  } else {
+    // אין מספור - פצל לפי שורות
+    steps = stepsRaw
+      .split(/\n/)
+      .map(s => s.trim())
+      .filter(Boolean);
+  }
+  
+  const stepsHTML = steps.map(s => `<li>${s}</li>`).join("");
 
-  // פיצול הערות לפי שורות
-  const notes = parts.notes
-    .split(/\n/)
-    .map(n => n.replace(/^\*\s*/, "").trim())  // הסרת כוכביות
-    .filter(Boolean)
-    .map(n => `<li>${n}</li>`)
-    .join("");
+  // פיצול הערות לפי כוכביות או שורות
+  const notesRaw = parts.notes.trim();
+  let notes = [];
+  
+  if (notesRaw.includes('*')) {
+    notes = notesRaw
+      .split('*')
+      .map(n => n.trim())
+      .filter(Boolean);
+  } else {
+    notes = notesRaw
+      .split(/\n/)
+      .map(n => n.trim())
+      .filter(Boolean);
+  }
+  
+  const notesHTML = notes.map(n => `<li>${n}</li>`).join("");
 
   const title = (parts.title || "").replace(/^🍰\s*/, "").trim();
 
@@ -221,8 +255,8 @@ function formatRecipeHTML(raw) {
     <p>🍪 הנה אחד המתכונים המעולים מהבלוג של קוקי כיף!<br>(יש עוד גרסאות באתר 💚)</p>
     ${title ? `<h2>${title}</h2>` : ""}
     <h3>🧾 מצרכים</h3><ul>${ingredientsHTML}</ul>
-    <h3>👩‍🍳 אופן הכנה</h3><ol>${steps}</ol>
-    ${notes ? `<h3>📌 הערות והמרות</h3><ul>${notes}</ul>` : ""}
+    <h3>👩‍🍳 אופן הכנה</h3><ol>${stepsHTML}</ol>
+    ${notesHTML ? `<h3>📌 הערות והמרות</h3><ul>${notesHTML}</ul>` : ""}
   </div>`;
 }
 
