@@ -1,4 +1,4 @@
-// Updated: 26.11.2025 - תיקון: טעינת כל המתכונים + שמירת שורות חדשות
+// Updated: 26.11.2025 - הוספת DEBUG למצרכים
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -13,10 +13,6 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
 let recipes = [];
-
-// ===============================
-// 🔧 פונקציות עזר לטיפול בעברית
-// ===============================
 
 function normalizeHebrew(text) {
   if (!text) return "";
@@ -79,10 +75,6 @@ function isRecipeRequest(text) {
   return foodKeywords.some(keyword => lower.includes(keyword));
 }
 
-// ===============================
-// 🔍 חיפוש מתכון משופר
-// ===============================
-
 function findBestRecipeRaw(query) {
   if (!recipes.length) {
     console.log("⚠️ אין מתכונים בזיכרון");
@@ -139,6 +131,10 @@ function combineRecipeText(recipe) {
   const ingredients = recipe.ingredients_text || "";
   const instructions = recipe.instructions_text || "";
   
+  console.log("🔍 DEBUG - מצרכים גולמיים:");
+  console.log(JSON.stringify(ingredients));
+  console.log("🔍 DEBUG - אורך:", ingredients.length, "תווים");
+  
   if (!ingredients && !instructions) {
     console.log("⚠️ המתכון ריק");
     return null;
@@ -146,10 +142,6 @@ function combineRecipeText(recipe) {
   
   return `${title}\n\n🧾 מצרכים\n${ingredients}\n\n👩‍🍳 אופן הכנה\n${instructions}`;
 }
-
-// ===============================
-// 📝 עיבוד וניקוי טקסט
-// ===============================
 
 function splitSections(raw) {
   const parts = { title: "", ingredients: "", steps: "", notes: "" };
@@ -213,10 +205,6 @@ function formatRecipeHTML(raw) {
   </div>`;
 }
 
-// ===============================
-// 🗄️ טעינת מתכונים מ-Supabase
-// ===============================
-
 async function loadAll() {
   console.log("⏳ טוען מתכונים מ-Supabase...");
   
@@ -238,10 +226,6 @@ async function loadAll() {
     recipes.slice(0, 3).forEach(r => console.log(`   - ${r.title}`));
   }
 }
-
-// ===============================
-// 🌐 API Routes
-// ===============================
 
 app.use(cors({ origin: "https://cookiecef.co.il" }));
 app.use(express.json());
@@ -299,10 +283,6 @@ app.post("/chat", async (req, res) => {
     res.status(500).json({ error: "שגיאה פנימית בשרת" });
   }
 });
-
-// ===============================
-// 🚀 הפעלת השרת
-// ===============================
 
 app.listen(PORT, async () => {
   console.log(`🚀 שרת מתחיל על פורט ${PORT}...`);
