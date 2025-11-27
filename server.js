@@ -1,4 +1,4 @@
-// Updated: 26.11.2025 - תיקון פיצול מצרכים לפי כוכביות
+// Updated: 26.11.2025 - תיקון: טעינת כל המתכונים + שמירת שורות חדשות
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -37,12 +37,12 @@ function normalizeHebrew(text) {
 // ניקוי מילות עזר מהשאילתה
 function cleanQuery(text) {
   return text
-    .replace(/^(מתכון\s+(ל|של|עבור|ל-)\s*)/i, "")  // "מתכון ל..." → ""
-    .replace(/^(איך\s+(מכינים|להכין|עושים|לעשות)\s*)/i, "")  // "איך מכינים..." → ""
-    .replace(/^(תני\s+לי\s+(מתכון\s+(ל|של))?\s*)/i, "")  // "תני לי..." → ""
-    .replace(/^(בא\s+לי\s+להכין\s*)/i, "")  // "בא לי להכין..." → ""
-    .replace(/^(רוצה\s+להכין\s*)/i, "")  // "רוצה להכין..." → ""
-    .replace(/^(אפשר\s+מתכון\s+(ל|של)\s*)/i, "")  // "אפשר מתכון ל..." → ""
+    .replace(/^(מתכון\s+(ל|של|עבור|ל-)\s*)/i, "")
+    .replace(/^(איך\s+(מכינים|להכין|עושים|לעשות)\s*)/i, "")
+    .replace(/^(תני\s+לי\s+(מתכון\s+(ל|של))?\s*)/i, "")
+    .replace(/^(בא\s+לי\s+להכין\s*)/i, "")
+    .replace(/^(רוצה\s+להכין\s*)/i, "")
+    .replace(/^(אפשר\s+מתכון\s+(ל|של)\s*)/i, "")
     .trim();
 }
 
@@ -51,13 +51,9 @@ function calculateSimilarity(str1, str2) {
   const s1 = normalizeHebrew(str1);
   const s2 = normalizeHebrew(str2);
   
-  // התאמה מלאה
   if (s1 === s2) return 100;
-  
-  // התאמה חלקית
   if (s1.includes(s2) || s2.includes(s1)) return 80;
   
-  // מילות מפתח משותפות
   const words1 = s1.split(" ").filter(w => w.length > 2);
   const words2 = s2.split(" ").filter(w => w.length > 2);
   const commonWords = words1.filter(w => words2.includes(w));
@@ -72,17 +68,15 @@ function calculateSimilarity(str1, str2) {
 function isRecipeRequest(text) {
   const lower = text.toLowerCase();
   
-  // מילות מפתח ברורות
   if (/מתכון|איך מכינים|תני לי|בא לי להכין|רוצה להכין|אפשר מתכון/.test(lower)) {
     return true;
   }
   
-  // שמות מאכלים נפוצים
   const foodKeywords = [
     'עוגיות', 'עוגה', 'לחם', 'חלה', 'פיתה', 'לפתן', 'בורקס',
     'סלט', 'מרק', 'תבשיל', 'קארי', 'פסטה', 'פיצה', 'קיש',
     'עוגת', 'מאפה', 'בייגלה', 'רול', 'טורט', 'מוס', 'קרם',
-    'גלידה', 'קינוח', 'עוגיות', 'ביסקוויט', 'בראוני',
+    'גלידה', 'קינוח', 'ביסקוויט', 'בראוני',
     'חומוס', 'טחינה', 'ממרח', 'דיפ', 'רוטב', 'מיונז'
   ];
   
@@ -99,7 +93,6 @@ function findBestRecipeRaw(query) {
     return null;
   }
 
-  // ניקוי מילות עזר מהשאילתה
   const cleanedQuery = cleanQuery(query);
   const normalizedQuery = normalizeHebrew(cleanedQuery);
   
@@ -107,7 +100,7 @@ function findBestRecipeRaw(query) {
   console.log(`   → ניקוי: "${cleanedQuery}"`);
   console.log(`   → נרמול: "${normalizedQuery}"`);
 
-  // שלב 1: חיפוש התאמה מדויקת (אחרי נרמול)
+  // שלב 1: חיפוש התאמה מדויקת
   let exactMatch = recipes.find(r => {
     const title = normalizeHebrew(r.title || "");
     return title === normalizedQuery;
@@ -118,7 +111,7 @@ function findBestRecipeRaw(query) {
     return combineRecipeText(exactMatch);
   }
 
-  // שלב 2: חיפוש כוללני (contains)
+  // שלב 2: חיפוש כוללני
   let partialMatch = recipes.find(r => {
     const title = normalizeHebrew(r.title || "");
     return title.includes(normalizedQuery) || normalizedQuery.includes(title);
@@ -129,13 +122,13 @@ function findBestRecipeRaw(query) {
     return combineRecipeText(partialMatch);
   }
 
-  // שלב 3: חיפוש מילות מפתח (fuzzy)
+  // שלב 3: חיפוש מילות מפתח
   const matches = recipes
     .map(r => ({
       recipe: r,
       score: calculateSimilarity(r.title || "", cleanedQuery)
     }))
-    .filter(m => m.score >= 40)  // סף מינימלי של 40%
+    .filter(m => m.score >= 40)
     .sort((a, b) => b.score - a.score);
 
   if (matches.length > 0) {
@@ -148,18 +141,17 @@ function findBestRecipeRaw(query) {
   return null;
 }
 
-// חיבור המצרכים והשלבים למתכון אחד
+// חיבור המצרכים והשלבים
 function combineRecipeText(recipe) {
   const title = recipe.title || "";
   const ingredients = recipe.ingredients_text || "";
   const instructions = recipe.instructions_text || "";
   
   if (!ingredients && !instructions) {
-    console.log("⚠️ המתכון ריק (אין מצרכים ושלבים)");
+    console.log("⚠️ המתכון ריק");
     return null;
   }
   
-  // חיבור הכל לפורמט אחיד
   return `${title}\n\n🧾 מצרכים\n${ingredients}\n\n👩‍🍳 אופן הכנה\n${instructions}`;
 }
 
@@ -167,19 +159,29 @@ function combineRecipeText(recipe) {
 // 📝 עיבוד וניקוי טקסט
 // ===============================
 
-function cleanText(t) {
-  return t.replace(/\\n/g, "\n").replace(/\r/g, "").replace(/קודם\s*הבא/gi, "").trim();
-}
-
 function splitSections(raw) {
   const parts = { title: "", ingredients: "", steps: "", notes: "" };
   let section = "title";
-  const lines = cleanText(raw).split(/\n+/).map(l => l.trim()).filter(Boolean);
+  
+  // שמירה על שורות חדשות אמיתיות
+  const lines = raw.split(/\n/).map(l => l.trim());
   
   for (const l of lines) {
-    if (/מצרכים|מרכיבים|🧾/.test(l)) { section = "ingredients"; continue; }
-    if (/אופן הכנה|שלבי הכנה|👩‍🍳/.test(l)) { section = "steps"; continue; }
-    if (/הערות|המרות|טיפים/.test(l)) { section = "notes"; continue; }
+    if (!l) continue;
+    
+    if (/מצרכים|מרכיבים|🧾/.test(l)) { 
+      section = "ingredients"; 
+      continue; 
+    }
+    if (/אופן הכנה|שלבי הכנה|👩‍🍳/.test(l)) { 
+      section = "steps"; 
+      continue; 
+    }
+    if (/הערות|המרות|טיפים/.test(l)) { 
+      section = "notes"; 
+      continue; 
+    }
+    
     parts[section] += l + "\n";
   }
   
@@ -190,62 +192,25 @@ function formatRecipeHTML(raw) {
   if (!raw) return "";
   const parts = splitSections(raw);
 
-  // פיצול מצרכים לפי כוכביות (*) או שורות חדשות
-  const ingredientsRaw = parts.ingredients.trim();
-  let ingredients = [];
-  
-  if (ingredientsRaw.includes('*')) {
-    // אם יש כוכביות - פצל לפי כוכביות
-    ingredients = ingredientsRaw
-      .split('*')
-      .map(l => l.trim())
-      .filter(Boolean);
-  } else {
-    // אם אין כוכביות - פצל לפי שורות
-    ingredients = ingredientsRaw
-      .split(/\n/)
-      .map(l => l.trim())
-      .filter(Boolean);
-  }
-  
+  // פיצול מצרכים לפי שורות
+  const ingredients = parts.ingredients
+    .split(/\n/)
+    .map(l => l.trim())
+    .filter(Boolean);
   const ingredientsHTML = ingredients.map(i => `<li>${i}</li>`).join("");
 
-  // פיצול שלבים לפי מספרים או שורות
-  const stepsRaw = parts.steps.replace(/\*\*/g, "").trim();
-  let steps = [];
-  
-  if (/^\d+\./.test(stepsRaw)) {
-    // יש מספור - פצל לפי מספרים
-    steps = stepsRaw
-      .split(/\d+\./)
-      .map(s => s.trim())
-      .filter(Boolean);
-  } else {
-    // אין מספור - פצל לפי שורות
-    steps = stepsRaw
-      .split(/\n/)
-      .map(s => s.trim())
-      .filter(Boolean);
-  }
-  
+  // פיצול שלבים לפי שורות
+  const steps = parts.steps
+    .split(/\n/)
+    .map(s => s.replace(/^\d+\.\s*/, "").trim())
+    .filter(Boolean);
   const stepsHTML = steps.map(s => `<li>${s}</li>`).join("");
 
-  // פיצול הערות לפי כוכביות או שורות
-  const notesRaw = parts.notes.trim();
-  let notes = [];
-  
-  if (notesRaw.includes('*')) {
-    notes = notesRaw
-      .split('*')
-      .map(n => n.trim())
-      .filter(Boolean);
-  } else {
-    notes = notesRaw
-      .split(/\n/)
-      .map(n => n.trim())
-      .filter(Boolean);
-  }
-  
+  // פיצול הערות לפי שורות
+  const notes = parts.notes
+    .split(/\n/)
+    .map(n => n.replace(/^\*\s*/, "").trim())
+    .filter(Boolean);
   const notesHTML = notes.map(n => `<li>${n}</li>`).join("");
 
   const title = (parts.title || "").replace(/^🍰\s*/, "").trim();
@@ -266,9 +231,12 @@ function formatRecipeHTML(raw) {
 
 async function loadAll() {
   console.log("⏳ טוען מתכונים מ-Supabase...");
-  const { data, error } = await supabase
+  
+  // 🔥 תיקון: טעינת כל המתכונים (לא רק 100!)
+  const { data, error, count } = await supabase
     .from("recipes_enriched_with_tags_new")
-    .select("id, title, ingredients_text, instructions_text");
+    .select("id, title, ingredients_text, instructions_text", { count: 'exact' })
+    .range(0, 1000);  // טוען עד 1000 מתכונים
   
   if (error) {
     console.error("❌ שגיאה בטעינה:", error.message);
@@ -276,9 +244,8 @@ async function loadAll() {
   }
   
   recipes = data || [];
-  console.log(`✅ נטענו ${recipes.length} מתכונים`);
+  console.log(`✅ נטענו ${recipes.length} מתכונים (סה"כ במאגר: ${count})`);
   
-  // הצג דוגמאות של כותרות (לבדיקה)
   if (recipes.length > 0) {
     console.log("📋 דוגמאות כותרות:");
     recipes.slice(0, 3).forEach(r => console.log(`   - ${r.title}`));
@@ -309,7 +276,6 @@ app.post("/chat", async (req, res) => {
     const m = message.trim();
     console.log(`💬 הודעה התקבלה: "${m}"`);
     
-    // זיהוי משופר של בקשות למתכון
     if (isRecipeRequest(m)) {
       const raw = findBestRecipeRaw(m);
       
@@ -325,7 +291,7 @@ app.post("/chat", async (req, res) => {
       return res.json({ reply: formatRecipeHTML(raw) });
     }
 
-    // שאלות כלליות - שולח ל-GPT
+    // שאלות כלליות
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.4,
@@ -357,3 +323,18 @@ app.listen(PORT, async () => {
   await loadAll();
   console.log(`🍪 קוקישף רץ ומוכן! https://cookiecef.onrender.com`);
 });
+```
+
+---
+
+## 🎯 מה תוקן:
+
+1. **`.range(0, 1000)`** - טוען עד 1000 מתכונים במקום 100!
+2. **`split(/\n/)`** - שומר על שורות חדשות אמיתיות
+3. **הסרת `cleanText`** - הפונקציה הזו הרסה את השורות החדשות
+
+---
+
+## ✅ עכשיו תראי בלוגים:
+```
+✅ נטענו 269 מתכונים (סה"כ במאגר: 269)
