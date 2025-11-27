@@ -18,23 +18,21 @@ let recipes = [];
 // 🔧 פונקציות עזר לטיפול בעברית
 // ===============================
 
-// נרמול טקסט עברי - מטפל בגרשיים, אותיות סופיות, רווחים
 function normalizeHebrew(text) {
   if (!text) return "";
   return text
     .toLowerCase()
-    .replace(/[׳'`´]/g, "'")  // אחדת כל הגרשיים
-    .replace(/[״""]/g, '"')   // אחדת גרשיים כפולים
-    .replace(/[םמ]/g, "מ")    // אותיות סופיות
+    .replace(/[׳'`´]/g, "'")
+    .replace(/[״""]/g, '"')
+    .replace(/[םמ]/g, "מ")
     .replace(/[ןנ]/g, "נ")
     .replace(/[ץצ]/g, "צ")
     .replace(/[ךכ]/g, "כ")
     .replace(/[ףפ]/g, "פ")
-    .replace(/\s+/g, " ")     // רווחים מרובים לרווח אחד
+    .replace(/\s+/g, " ")
     .trim();
 }
 
-// ניקוי מילות עזר מהשאילתה
 function cleanQuery(text) {
   return text
     .replace(/^(מתכון\s+(ל|של|עבור|ל-)\s*)/i, "")
@@ -46,7 +44,6 @@ function cleanQuery(text) {
     .trim();
 }
 
-// חישוב ציון דמיון בין שני טקסטים (0-100)
 function calculateSimilarity(str1, str2) {
   const s1 = normalizeHebrew(str1);
   const s2 = normalizeHebrew(str2);
@@ -64,7 +61,6 @@ function calculateSimilarity(str1, str2) {
   return Math.round(score);
 }
 
-// בדיקה אם השאילתה היא בקשה למתכון
 function isRecipeRequest(text) {
   const lower = text.toLowerCase();
   
@@ -100,7 +96,6 @@ function findBestRecipeRaw(query) {
   console.log(`   → ניקוי: "${cleanedQuery}"`);
   console.log(`   → נרמול: "${normalizedQuery}"`);
 
-  // שלב 1: חיפוש התאמה מדויקת
   let exactMatch = recipes.find(r => {
     const title = normalizeHebrew(r.title || "");
     return title === normalizedQuery;
@@ -111,7 +106,6 @@ function findBestRecipeRaw(query) {
     return combineRecipeText(exactMatch);
   }
 
-  // שלב 2: חיפוש כוללני
   let partialMatch = recipes.find(r => {
     const title = normalizeHebrew(r.title || "");
     return title.includes(normalizedQuery) || normalizedQuery.includes(title);
@@ -122,7 +116,6 @@ function findBestRecipeRaw(query) {
     return combineRecipeText(partialMatch);
   }
 
-  // שלב 3: חיפוש מילות מפתח
   const matches = recipes
     .map(r => ({
       recipe: r,
@@ -141,7 +134,6 @@ function findBestRecipeRaw(query) {
   return null;
 }
 
-// חיבור המצרכים והשלבים
 function combineRecipeText(recipe) {
   const title = recipe.title || "";
   const ingredients = recipe.ingredients_text || "";
@@ -163,7 +155,6 @@ function splitSections(raw) {
   const parts = { title: "", ingredients: "", steps: "", notes: "" };
   let section = "title";
   
-  // שמירה על שורות חדשות אמיתיות
   const lines = raw.split(/\n/).map(l => l.trim());
   
   for (const l of lines) {
@@ -192,21 +183,18 @@ function formatRecipeHTML(raw) {
   if (!raw) return "";
   const parts = splitSections(raw);
 
-  // פיצול מצרכים לפי שורות
   const ingredients = parts.ingredients
     .split(/\n/)
     .map(l => l.trim())
     .filter(Boolean);
   const ingredientsHTML = ingredients.map(i => `<li>${i}</li>`).join("");
 
-  // פיצול שלבים לפי שורות
   const steps = parts.steps
     .split(/\n/)
     .map(s => s.replace(/^\d+\.\s*/, "").trim())
     .filter(Boolean);
   const stepsHTML = steps.map(s => `<li>${s}</li>`).join("");
 
-  // פיצול הערות לפי שורות
   const notes = parts.notes
     .split(/\n/)
     .map(n => n.replace(/^\*\s*/, "").trim())
@@ -232,11 +220,10 @@ function formatRecipeHTML(raw) {
 async function loadAll() {
   console.log("⏳ טוען מתכונים מ-Supabase...");
   
-  // 🔥 תיקון: טעינת כל המתכונים (לא רק 100!)
   const { data, error, count } = await supabase
     .from("recipes_enriched_with_tags_new")
     .select("id, title, ingredients_text, instructions_text", { count: 'exact' })
-    .range(0, 1000);  // טוען עד 1000 מתכונים
+    .range(0, 1000);
   
   if (error) {
     console.error("❌ שגיאה בטעינה:", error.message);
@@ -291,7 +278,6 @@ app.post("/chat", async (req, res) => {
       return res.json({ reply: formatRecipeHTML(raw) });
     }
 
-    // שאלות כלליות
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.4,
@@ -323,18 +309,3 @@ app.listen(PORT, async () => {
   await loadAll();
   console.log(`🍪 קוקישף רץ ומוכן! https://cookiecef.onrender.com`);
 });
-```
-
----
-
-## 🎯 מה תוקן:
-
-1. **`.range(0, 1000)`** - טוען עד 1000 מתכונים במקום 100!
-2. **`split(/\n/)`** - שומר על שורות חדשות אמיתיות
-3. **הסרת `cleanText`** - הפונקציה הזו הרסה את השורות החדשות
-
----
-
-## ✅ עכשיו תראי בלוגים:
-```
-✅ נטענו 269 מתכונים (סה"כ במאגר: 269)
