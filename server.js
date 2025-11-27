@@ -1,4 +1,4 @@
-// Updated: 26.11.2025 - תיקון: פיצול מצרכים לפי יחידות מדידה
+// Updated: 26.11.2025 - תיקון סופי: פיצול חכם של מצרכים ושלבים
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -85,8 +85,6 @@ function findBestRecipeRaw(query) {
   const normalizedQuery = normalizeHebrew(cleanedQuery);
   
   console.log(`🔍 מחפש: "${query}"`);
-  console.log(`   → ניקוי: "${cleanedQuery}"`);
-  console.log(`   → נרמול: "${normalizedQuery}"`);
 
   let exactMatch = recipes.find(r => {
     const title = normalizeHebrew(r.title || "");
@@ -139,6 +137,49 @@ function combineRecipeText(recipe) {
   return `${title}\n\n🧾 מצרכים\n${ingredients}\n\n👩‍🍳 אופן הכנה\n${instructions}`;
 }
 
+// פיצול חכם של מצרכים
+function smartSplitIngredients(text) {
+  if (!text) return [];
+  
+  // הסרת תווים מיוחדים
+  text = text.replace(/\*/g, '').trim();
+  
+  // אם יש שורות חדשות - פצל לפי שורות
+  if (text.includes('\n')) {
+    return text.split(/\n/).map(l => l.trim()).filter(Boolean);
+  }
+  
+  // אין שורות חדשות - פיצול חכם
+  // מוסיף |||| לפני כל מספר + יחידה
+  text = text.replace(/(\d+\/\d+|\d+)\s+(כוס|כוסות|כף|כפות|כפית|כפיות|גרם|ליטר|מ"ל|מ״ל)/gi, '||||$&');
+  
+  const items = text.split('||||').map(l => l.trim()).filter(Boolean);
+  
+  // אם קיבלנו רק פריט אחד - נסה פיצול נוסף
+  if (items.length <= 1) {
+    // פצל לפי סימן ')' שבא אחרי מספר
+    return text.split(/\)\s+(?=\d)/).map(l => l.trim() + (l.includes(')') ? '' : ')')).filter(Boolean);
+  }
+  
+  return items;
+}
+
+// פיצול חכם של שלבי הכנה
+function smartSplitSteps(text) {
+  if (!text) return [];
+  
+  // הסרת ** (bold)
+  text = text.replace(/\*\*/g, '').trim();
+  
+  // פיצול לפי מספור (1. 2. 3.)
+  const steps = text.split(/(?=\d+\.\s)/).map(s => {
+    // הסרת המספור
+    return s.replace(/^\d+\.\s*/, '').trim();
+  }).filter(Boolean);
+  
+  return steps;
+}
+
 function splitSections(raw) {
   const parts = { title: "", ingredients: "", steps: "", notes: "" };
   let section = "title";
@@ -161,8 +202,14 @@ function splitSections(raw) {
       continue; 
     }
     
-    parts[section] += l + "\n";
+    parts[section] += l + " ";
   }
+  
+  // ניקוי סופי
+  parts.title = parts.title.trim();
+  parts.ingredients = parts.ingredients.trim();
+  parts.steps = parts.steps.trim();
+  parts.notes = parts.notes.replace(/קודם|הבא/gi, '').trim();
   
   return parts;
 }
@@ -171,39 +218,17 @@ function formatRecipeHTML(raw) {
   if (!raw) return "";
   const parts = splitSections(raw);
 
-  // פיצול מצרכים - מטפל במקרה שהכל בשורה אחת!
-  let ingredientsText = parts.ingredients.trim();
-  let ingredients = [];
-  
-  // אם יש שורות חדשות - פצל לפי שורות
-  if (ingredientsText.includes('\n')) {
-    ingredients = ingredientsText.split(/\n/).map(l => l.trim()).filter(Boolean);
-  } else {
-    // אין שורות חדשות - פצל לפי יחידות מדידה או כוכביות
-    // הוספת מפריד לפני מספר+יחידה או כוכבית
-    ingredientsText = ingredientsText
-      .replace(/(\d+\/\d+|\d+)\s*(כוס|כוסות|כף|כפות|כפית|כפיות|גרם|ליטר|מ"ל|מ״ל)/g, '|||$&')
-      .replace(/\*/g, '|||*');
-    
-    ingredients = ingredientsText
-      .split('|||')
-      .map(l => l.trim())
-      .filter(Boolean);
-  }
-  
+  // שימוש בפיצול החכם
+  const ingredients = smartSplitIngredients(parts.ingredients);
   const ingredientsHTML = ingredients.map(i => `<li>${i}</li>`).join("");
 
-  // פיצול שלבים
-  const steps = parts.steps
-    .split(/\n/)
-    .map(s => s.replace(/^\d+\.\s*/, "").trim())
-    .filter(Boolean);
+  const steps = smartSplitSteps(parts.steps);
   const stepsHTML = steps.map(s => `<li>${s}</li>`).join("");
 
-  // פיצול הערות
+  // הערות - פיצול לפי נקודה או שורה חדשה
   const notes = parts.notes
-    .split(/\n/)
-    .map(n => n.replace(/^\*\s*/, "").trim())
+    .split(/\n|(?<=\.)\s+(?=\*)/)
+    .map(n => n.replace(/^\*\s*/, '').trim())
     .filter(Boolean);
   const notesHTML = notes.map(n => `<li>${n}</li>`).join("");
 
