@@ -1,4 +1,4 @@
-// Updated: 26.11.2025 - תיקון סופי: פיצול חכם של מצרכים ושלבים
+// Updated: 26.11.2025 - שימוש ב-GPT לעיבוד מתכונים
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -93,7 +93,7 @@ function findBestRecipeRaw(query) {
   
   if (exactMatch) {
     console.log(`✅ התאמה מדויקת: ${exactMatch.title}`);
-    return combineRecipeText(exactMatch);
+    return exactMatch;
   }
 
   let partialMatch = recipes.find(r => {
@@ -103,7 +103,7 @@ function findBestRecipeRaw(query) {
   
   if (partialMatch) {
     console.log(`✅ התאמה חלקית: ${partialMatch.title}`);
-    return combineRecipeText(partialMatch);
+    return partialMatch;
   }
 
   const matches = recipes
@@ -117,131 +117,77 @@ function findBestRecipeRaw(query) {
   if (matches.length > 0) {
     const best = matches[0];
     console.log(`✅ התאמה חכמה (${best.score}%): ${best.recipe.title}`);
-    return combineRecipeText(best.recipe);
+    return best.recipe;
   }
 
   console.log("❌ לא נמצא מתכון תואם");
   return null;
 }
 
-function combineRecipeText(recipe) {
+// שימוש ב-GPT לעיבוד המתכון לפורמט מסודר
+async function formatRecipeWithGPT(recipe) {
   const title = recipe.title || "";
   const ingredients = recipe.ingredients_text || "";
   const instructions = recipe.instructions_text || "";
   
-  if (!ingredients && !instructions) {
-    console.log("⚠️ המתכון ריק");
-    return null;
-  }
-  
-  return `${title}\n\n🧾 מצרכים\n${ingredients}\n\n👩‍🍳 אופן הכנה\n${instructions}`;
-}
+  const prompt = `אני נותן לך מתכון טבעוני. תפקידך לארגן אותו בפורמט HTML מסודר.
 
-// פיצול חכם של מצרכים
-function smartSplitIngredients(text) {
-  if (!text) return [];
-  
-  // הסרת תווים מיוחדים
-  text = text.replace(/\*/g, '').trim();
-  
-  // אם יש שורות חדשות - פצל לפי שורות
-  if (text.includes('\n')) {
-    return text.split(/\n/).map(l => l.trim()).filter(Boolean);
-  }
-  
-  // אין שורות חדשות - פיצול חכם
-  // מוסיף |||| לפני כל מספר + יחידה
-  text = text.replace(/(\d+\/\d+|\d+)\s+(כוס|כוסות|כף|כפות|כפית|כפיות|גרם|ליטר|מ"ל|מ״ל)/gi, '||||$&');
-  
-  const items = text.split('||||').map(l => l.trim()).filter(Boolean);
-  
-  // אם קיבלנו רק פריט אחד - נסה פיצול נוסף
-  if (items.length <= 1) {
-    // פצל לפי סימן ')' שבא אחרי מספר
-    return text.split(/\)\s+(?=\d)/).map(l => l.trim() + (l.includes(')') ? '' : ')')).filter(Boolean);
-  }
-  
-  return items;
-}
+כותרת: ${title}
 
-// פיצול חכם של שלבי הכנה
-function smartSplitSteps(text) {
-  if (!text) return [];
-  
-  // הסרת ** (bold)
-  text = text.replace(/\*\*/g, '').trim();
-  
-  // פיצול לפי מספור (1. 2. 3.)
-  const steps = text.split(/(?=\d+\.\s)/).map(s => {
-    // הסרת המספור
-    return s.replace(/^\d+\.\s*/, '').trim();
-  }).filter(Boolean);
-  
-  return steps;
-}
+מצרכים (טקסט גולמי):
+${ingredients}
 
-function splitSections(raw) {
-  const parts = { title: "", ingredients: "", steps: "", notes: "" };
-  let section = "title";
-  
-  const lines = raw.split(/\n/).map(l => l.trim());
-  
-  for (const l of lines) {
-    if (!l) continue;
+שלבי הכנה (טקסט גולמי):
+${instructions}
+
+החזר HTML בפורמט הבא בדיוק (ללא markdown, ללא \`\`\`):
+
+<div style="direction:rtl;text-align:right;font-family:'Assistant',sans-serif;line-height:1.8;color:#4a2c06;background:#fffaf4;padding:20px;border-radius:12px;">
+  <p>🍪 הנה אחד המתכונים המעולים מהבלוג של קוקי כיף!<br>(יש עוד גרסאות באתר 💚)</p>
+  <h2>${title}</h2>
+  <h3>🧾 מצרכים</h3>
+  <ul>
+    <li>פריט ראשון</li>
+    <li>פריט שני</li>
+  </ul>
+  <h3>👩‍🍳 אופן הכנה</h3>
+  <ol>
+    <li>שלב ראשון</li>
+    <li>שלב שני</li>
+  </ol>
+</div>
+
+חשוב:
+- כל מצרך בשורה נפרדת ב-<li>
+- כל שלב בשורה נפרדת ב-<li>
+- אל תוסיף כוכביות או מספרים - רק את התוכן
+- החזר רק HTML, ללא הסבר`;
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.3,
+      max_tokens: 1500,
+      messages: [
+        { role: "user", content: prompt }
+      ]
+    });
+
+    let html = completion.choices?.[0]?.message?.content || "";
     
-    if (/מצרכים|מרכיבים|🧾/.test(l)) { 
-      section = "ingredients"; 
-      continue; 
-    }
-    if (/אופן הכנה|שלבי הכנה|👩‍🍳/.test(l)) { 
-      section = "steps"; 
-      continue; 
-    }
-    if (/הערות|המרות|טיפים/.test(l)) { 
-      section = "notes"; 
-      continue; 
-    }
+    // ניקוי markdown אם קיים
+    html = html.replace(/```html\n?/g, "").replace(/```\n?/g, "").trim();
     
-    parts[section] += l + " ";
+    return html;
+    
+  } catch (error) {
+    console.error("❌ שגיאה בעיבוד עם GPT:", error.message);
+    // fallback - החזר משהו בסיסי
+    return `<div style="direction:rtl;padding:20px;">
+      <h2>${title}</h2>
+      <p>שגיאה בטעינת המתכון. נסי שוב!</p>
+    </div>`;
   }
-  
-  // ניקוי סופי
-  parts.title = parts.title.trim();
-  parts.ingredients = parts.ingredients.trim();
-  parts.steps = parts.steps.trim();
-  parts.notes = parts.notes.replace(/קודם|הבא/gi, '').trim();
-  
-  return parts;
-}
-
-function formatRecipeHTML(raw) {
-  if (!raw) return "";
-  const parts = splitSections(raw);
-
-  // שימוש בפיצול החכם
-  const ingredients = smartSplitIngredients(parts.ingredients);
-  const ingredientsHTML = ingredients.map(i => `<li>${i}</li>`).join("");
-
-  const steps = smartSplitSteps(parts.steps);
-  const stepsHTML = steps.map(s => `<li>${s}</li>`).join("");
-
-  // הערות - פיצול לפי נקודה או שורה חדשה
-  const notes = parts.notes
-    .split(/\n|(?<=\.)\s+(?=\*)/)
-    .map(n => n.replace(/^\*\s*/, '').trim())
-    .filter(Boolean);
-  const notesHTML = notes.map(n => `<li>${n}</li>`).join("");
-
-  const title = (parts.title || "").replace(/^🍰\s*/, "").trim();
-
-  return `
-  <div style="direction:rtl;text-align:right;font-family:'Assistant',sans-serif;line-height:1.8;color:#4a2c06;background:#fffaf4;padding:20px;border-radius:12px;">
-    <p>🍪 הנה אחד המתכונים המעולים מהבלוג של קוקי כיף!<br>(יש עוד גרסאות באתר 💚)</p>
-    ${title ? `<h2>${title}</h2>` : ""}
-    <h3>🧾 מצרכים</h3><ul>${ingredientsHTML}</ul>
-    <h3>👩‍🍳 אופן הכנה</h3><ol>${stepsHTML}</ol>
-    ${notesHTML ? `<h3>📌 הערות והמרות</h3><ul>${notesHTML}</ul>` : ""}
-  </div>`;
 }
 
 async function loadAll() {
@@ -287,9 +233,9 @@ app.post("/chat", async (req, res) => {
     console.log(`💬 הודעה התקבלה: "${m}"`);
     
     if (isRecipeRequest(m)) {
-      const raw = findBestRecipeRaw(m);
+      const recipe = findBestRecipeRaw(m);
       
-      if (!raw) {
+      if (!recipe) {
         return res.json({ 
           reply: `<div style="direction:rtl;padding:15px;background:#fff3e0;border-radius:8px;">
             <p>🔍 לא מצאתי מתכון שתואם ל: <strong>${m}</strong></p>
@@ -298,9 +244,12 @@ app.post("/chat", async (req, res) => {
         });
       }
       
-      return res.json({ reply: formatRecipeHTML(raw) });
+      // עיבוד המתכון עם GPT
+      const formattedHTML = await formatRecipeWithGPT(recipe);
+      return res.json({ reply: formattedHTML });
     }
 
+    // שאלות כלליות
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.4,
