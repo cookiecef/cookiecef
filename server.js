@@ -1,4 +1,4 @@
-// Updated: 26.11.2025 - תיקון שמות טבלאות ועמודות
+// Updated: 26.11.2025 - תיקון זיהוי וניקוי שאילתות
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -34,6 +34,18 @@ function normalizeHebrew(text) {
     .trim();
 }
 
+// ניקוי מילות עזר מהשאילתה
+function cleanQuery(text) {
+  return text
+    .replace(/^(מתכון\s+(ל|של|עבור|ל-)\s*)/i, "")  // "מתכון ל..." → ""
+    .replace(/^(איך\s+(מכינים|להכין|עושים|לעשות)\s*)/i, "")  // "איך מכינים..." → ""
+    .replace(/^(תני\s+לי\s+(מתכון\s+(ל|של))?\s*)/i, "")  // "תני לי..." → ""
+    .replace(/^(בא\s+לי\s+להכין\s*)/i, "")  // "בא לי להכין..." → ""
+    .replace(/^(רוצה\s+להכין\s*)/i, "")  // "רוצה להכין..." → ""
+    .replace(/^(אפשר\s+מתכון\s+(ל|של)\s*)/i, "")  // "אפשר מתכון ל..." → ""
+    .trim();
+}
+
 // חישוב ציון דמיון בין שני טקסטים (0-100)
 function calculateSimilarity(str1, str2) {
   const s1 = normalizeHebrew(str1);
@@ -56,6 +68,27 @@ function calculateSimilarity(str1, str2) {
   return Math.round(score);
 }
 
+// בדיקה אם השאילתה היא בקשה למתכון
+function isRecipeRequest(text) {
+  const lower = text.toLowerCase();
+  
+  // מילות מפתח ברורות
+  if (/מתכון|איך מכינים|תני לי|בא לי להכין|רוצה להכין|אפשר מתכון/.test(lower)) {
+    return true;
+  }
+  
+  // שמות מאכלים נפוצים
+  const foodKeywords = [
+    'עוגיות', 'עוגה', 'לחם', 'חלה', 'פיתה', 'לפתן', 'בורקס',
+    'סלט', 'מרק', 'תבשיל', 'קארי', 'פסטה', 'פיצה', 'קיש',
+    'עוגת', 'מאפה', 'בייגלה', 'רול', 'טורט', 'מוס', 'קרם',
+    'גלידה', 'קינוח', 'עוגיות', 'ביסקוויט', 'בראוני',
+    'חומוס', 'טחינה', 'ממרח', 'דיפ', 'רוטב', 'מיונז'
+  ];
+  
+  return foodKeywords.some(keyword => lower.includes(keyword));
+}
+
 // ===============================
 // 🔍 חיפוש מתכון משופר
 // ===============================
@@ -66,8 +99,13 @@ function findBestRecipeRaw(query) {
     return null;
   }
 
-  const normalizedQuery = normalizeHebrew(query);
-  console.log(`🔍 מחפש: "${query}" → נרמול: "${normalizedQuery}"`);
+  // ניקוי מילות עזר מהשאילתה
+  const cleanedQuery = cleanQuery(query);
+  const normalizedQuery = normalizeHebrew(cleanedQuery);
+  
+  console.log(`🔍 מחפש: "${query}"`);
+  console.log(`   → ניקוי: "${cleanedQuery}"`);
+  console.log(`   → נרמול: "${normalizedQuery}"`);
 
   // שלב 1: חיפוש התאמה מדויקת (אחרי נרמול)
   let exactMatch = recipes.find(r => {
@@ -95,7 +133,7 @@ function findBestRecipeRaw(query) {
   const matches = recipes
     .map(r => ({
       recipe: r,
-      score: calculateSimilarity(r.title || "", query)
+      score: calculateSimilarity(r.title || "", cleanedQuery)
     }))
     .filter(m => m.score >= 40)  // סף מינימלי של 40%
     .sort((a, b) => b.score - a.score);
@@ -235,15 +273,14 @@ app.post("/chat", async (req, res) => {
     const m = message.trim();
     console.log(`💬 הודעה התקבלה: "${m}"`);
     
-    const isRecipe = /מתכון|איך מכינים|תני לי|בא לי להכין|רוצה להכין/.test(m);
-
-    if (isRecipe) {
+    // זיהוי משופר של בקשות למתכון
+    if (isRecipeRequest(m)) {
       const raw = findBestRecipeRaw(m);
       
       if (!raw) {
         return res.json({ 
           reply: `<div style="direction:rtl;padding:15px;background:#fff3e0;border-radius:8px;">
-            <p>🔍 לא מצאתי מתכון שתואם בדיוק ל: <strong>${m}</strong></p>
+            <p>🔍 לא מצאתי מתכון שתואם ל: <strong>${m}</strong></p>
             <p>נסי לחפש במילים אחרות או תשאלי אותי משהו אחר! 💚</p>
           </div>` 
         });
