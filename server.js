@@ -1,4 +1,4 @@
-// Updated: 26.11.2025 - הוספת DEBUG למצרכים
+// Updated: 26.11.2025 - תיקון: פיצול מצרכים לפי יחידות מדידה
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -131,10 +131,6 @@ function combineRecipeText(recipe) {
   const ingredients = recipe.ingredients_text || "";
   const instructions = recipe.instructions_text || "";
   
-  console.log("🔍 DEBUG - מצרכים גולמיים:");
-  console.log(JSON.stringify(ingredients));
-  console.log("🔍 DEBUG - אורך:", ingredients.length, "תווים");
-  
   if (!ingredients && !instructions) {
     console.log("⚠️ המתכון ריק");
     return null;
@@ -175,18 +171,36 @@ function formatRecipeHTML(raw) {
   if (!raw) return "";
   const parts = splitSections(raw);
 
-  const ingredients = parts.ingredients
-    .split(/\n/)
-    .map(l => l.trim())
-    .filter(Boolean);
+  // פיצול מצרכים - מטפל במקרה שהכל בשורה אחת!
+  let ingredientsText = parts.ingredients.trim();
+  let ingredients = [];
+  
+  // אם יש שורות חדשות - פצל לפי שורות
+  if (ingredientsText.includes('\n')) {
+    ingredients = ingredientsText.split(/\n/).map(l => l.trim()).filter(Boolean);
+  } else {
+    // אין שורות חדשות - פצל לפי יחידות מדידה או כוכביות
+    // הוספת מפריד לפני מספר+יחידה או כוכבית
+    ingredientsText = ingredientsText
+      .replace(/(\d+\/\d+|\d+)\s*(כוס|כוסות|כף|כפות|כפית|כפיות|גרם|ליטר|מ"ל|מ״ל)/g, '|||$&')
+      .replace(/\*/g, '|||*');
+    
+    ingredients = ingredientsText
+      .split('|||')
+      .map(l => l.trim())
+      .filter(Boolean);
+  }
+  
   const ingredientsHTML = ingredients.map(i => `<li>${i}</li>`).join("");
 
+  // פיצול שלבים
   const steps = parts.steps
     .split(/\n/)
     .map(s => s.replace(/^\d+\.\s*/, "").trim())
     .filter(Boolean);
   const stepsHTML = steps.map(s => `<li>${s}</li>`).join("");
 
+  // פיצול הערות
   const notes = parts.notes
     .split(/\n/)
     .map(n => n.replace(/^\*\s*/, "").trim())
