@@ -1,4 +1,4 @@
-// Updated: 28.11.2025 - חיבור לטבלת knowledge_base
+// Updated: 28.11.2025 - הוספת זיכרון להמלצות + שליפה אוטומטית
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -13,7 +13,10 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
 let recipes = [];
-let knowledgeBase = []; // 🆕 מאגר הידע
+let knowledgeBase = [];
+
+// 🆕 זיכרון זמני של המלצות (מוחק אחרי 10 דק)
+const recentRecommendations = new Map();
 
 function normalizeHebrew(text) {
   if (!text) return "";
@@ -58,6 +61,12 @@ function calculateSimilarity(str1, str2) {
   return Math.round(score);
 }
 
+// 🆕 זיהוי בקשה "תני לי אותם / כתבי אותם"
+function isRequestForPreviousRecipes(text) {
+  const lower = text.toLowerCase();
+  return /תני לי אותם|כתבי אותם|תציגי אותם|תני לי את המתכונים|הצג אותם|אני רוצה אותם/.test(lower);
+}
+
 function isRecommendationRequest(text) {
   const lower = text.toLowerCase();
   
@@ -94,7 +103,6 @@ function isSpecificRecipeRequest(text) {
   return foodKeywords.some(keyword => lower.includes(keyword));
 }
 
-// 🆕 בדיקה אם השאלה קשורה למיל פרפ או flow
 function isKnowledgeQuestion(text) {
   const lower = text.toLowerCase();
   
@@ -109,11 +117,9 @@ function isKnowledgeQuestion(text) {
   return knowledgeKeywords.some(keyword => lower.includes(keyword));
 }
 
-// 🆕 חיפוש בטבלת הידע
 function searchKnowledge(query) {
   const normalized = normalizeHebrew(query);
   
-  // חיפוש לפי מילות מפתח או תוכן
   const matches = knowledgeBase.filter(item => {
     const keywords = normalizeHebrew(item.keywords || '');
     const content = normalizeHebrew(item.content || '');
@@ -248,7 +254,6 @@ ${instructions}
 async function loadAll() {
   console.log("⏳ טוען נתונים מ-Supabase...");
   
-  // טעינת מתכונים
   const { data: recipesData, error: recipesError, count } = await supabase
     .from("recipes_enriched_with_tags_new")
     .select("id, title, ingredients_text, instructions_text", { count: 'exact' })
@@ -261,7 +266,6 @@ async function loadAll() {
     console.log(`✅ נטענו ${recipes.length} מתכונים (סה"כ במאגר: ${count})`);
   }
   
-  // 🆕 טעינת מאגר הידע
   const { data: knowledgeData, error: knowledgeError } = await supabase
     .from("knowledge_base")
     .select("*");
@@ -286,23 +290,47 @@ app.get("/", (req, res) => res.json({
 
 app.post("/chat", async (req, res) => {
   try {
-    const { message } = req.body || {};
+    const { message, sessionId } = req.body || {};
     
     if (!message || !message.trim()) {
       return res.status(400).json({ error: "הודעה ריקה" });
     }
     
     const m = message.trim();
+    const session = sessionId || 'default';
     console.log(`💬 הודעה התקבלה: "${m}"`);
     
-    // 🆕 בדיקה: האם זו שאלה על meal prep / flow?
+    // 🆕 בדיקה: האם זו בקשה להציג מתכונים שהומלצו?
+    if (isRequestForPreviousRecipes(m) && recentRecommendations.has(session)) {
+      console.log("📖 מבקש להציג מתכונים שהומלצו");
+      
+      const recommendedTitles = recentRecommendations.get(session);
+      const foundRecipes = [];
+      
+      for (const title of recommendedTitles) {
+        const recipe = findBestRecipeRaw(title);
+        if (recipe) {
+          foundRecipes.push(recipe);
+        }
+      }
+      
+      if (foundRecipes.length > 0) {
+        // מציג את כל המתכונים
+        const htmlPromises = foundRecipes.map(r => formatRecipeWithGPT(r));
+        const htmlResults = await Promise.all(htmlPromises);
+        
+        const combined = htmlResults.join('\n<div style="height:20px;"></div>\n');
+        return res.json({ reply: combined });
+      }
+    }
+    
+    // בדיקה: האם זו שאלה על meal prep / flow?
     if (isKnowledgeQuestion(m)) {
       console.log("📚 זוהה כשאלת ידע - מחפש במאגר");
       
       const knowledgeMatches = searchKnowledge(m);
       
       if (knowledgeMatches.length > 0) {
-        // מצאנו מידע רלוונטי - שולחים ל-GPT עם ההקשר
         const context = knowledgeMatches.map(k => k.content).join('\n\n---\n\n');
         
         const completion = await openai.chat.completions.create({
@@ -352,10 +380,10 @@ app.post("/chat", async (req, res) => {
 
 כשמבקשים ממך המלצות למתכונים:
 - המלצי על מתכונים ספציפיים מהרשימה למטה
-- התאימי את ההמלצות לבקשה (ארוחת צהריים/ערב, מרכיב ספציפי, וכו')
+- התאימי את ההמלצות לבקשה
 - תני 2-4 המלצות מגוונות
 - הסבירי בקצרה למה כל מתכון מתאים
-- עודדי את המשתמשת לחפש את המתכון המלא (למשל: "כתבי 'מתכון לעוגיות שוקולד'")
+- בסוף התשובה, תוסיפי: "אם תרצי את המתכונים המלאים, פשוט כתבי 'תני לי אותם' ואני אציג לך!"
 
 רשימת המתכונים הזמינים (50 ראשונים):
 - ${recipesList}
@@ -367,6 +395,21 @@ app.post("/chat", async (req, res) => {
       });
 
       const reply = completion.choices?.[0]?.message?.content || "לא הצלחתי להמליץ כרגע.";
+      
+      // 🆕 שמירת ההמלצות בזיכרון
+      const recommendedTitles = [];
+      recipes.slice(0, 50).forEach(r => {
+        if (reply.includes(r.title)) {
+          recommendedTitles.push(r.title);
+        }
+      });
+      
+      if (recommendedTitles.length > 0) {
+        recentRecommendations.set(session, recommendedTitles);
+        // מחיקה אחרי 10 דקות
+        setTimeout(() => recentRecommendations.delete(session), 600000);
+      }
+      
       return res.json({ reply });
     }
     
