@@ -1,4 +1,4 @@
-// Updated: 28.11.2025 - הוספת זיכרון להמלצות + שליפה אוטומטית
+// Updated: 29.11.2025 - הוספת תמיכה בהיסטוריית שיחה
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -14,8 +14,6 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY
 
 let recipes = [];
 let knowledgeBase = [];
-
-// 🆕 זיכרון זמני של המלצות (מוחק אחרי 10 דק)
 const recentRecommendations = new Map();
 
 function normalizeHebrew(text) {
@@ -61,7 +59,6 @@ function calculateSimilarity(str1, str2) {
   return Math.round(score);
 }
 
-// 🆕 זיהוי בקשה "תני לי אותם / כתבי אותם"
 function isRequestForPreviousRecipes(text) {
   const lower = text.toLowerCase();
   return /תני לי אותם|כתבי אותם|תציגי אותם|תני לי את המתכונים|הצג אותם|אני רוצה אותם/.test(lower);
@@ -109,7 +106,7 @@ function isKnowledgeQuestion(text) {
   const knowledgeKeywords = [
     'meal prep', 'מיל פרפ', 'מיילפרפ', 'בישול מראש',
     'סדר בישול', 'flow', 'פלו', 'תכנון בישול',
-    'איך לארגן', 'סדר פעולות', 'תזמון',
+    'איך לארגן', 'סדר פעולות', 'תזמון', 'תכנית פעולות',
     'סלט בצנצנת', 'חלבון טבעוני', 'בסיסים',
     'תנור', 'כיריים', 'batching', 'תחנות עבודה'
   ];
@@ -290,7 +287,7 @@ app.get("/", (req, res) => res.json({
 
 app.post("/chat", async (req, res) => {
   try {
-    const { message, sessionId } = req.body || {};
+    const { message, history, sessionId } = req.body || {};
     
     if (!message || !message.trim()) {
       return res.status(400).json({ error: "הודעה ריקה" });
@@ -300,7 +297,10 @@ app.post("/chat", async (req, res) => {
     const session = sessionId || 'default';
     console.log(`💬 הודעה התקבלה: "${m}"`);
     
-    // 🆕 בדיקה: האם זו בקשה להציג מתכונים שהומלצו?
+    // 🆕 בניית היסטוריית שיחה ל-GPT
+    const conversationHistory = history || [];
+    
+    // בדיקה: האם זו בקשה להציג מתכונים שהומלצו?
     if (isRequestForPreviousRecipes(m) && recentRecommendations.has(session)) {
       console.log("📖 מבקש להציג מתכונים שהומלצו");
       
@@ -315,7 +315,6 @@ app.post("/chat", async (req, res) => {
       }
       
       if (foundRecipes.length > 0) {
-        // מציג את כל המתכונים
         const htmlPromises = foundRecipes.map(r => formatRecipeWithGPT(r));
         const htmlResults = await Promise.all(htmlPromises);
         
@@ -333,27 +332,30 @@ app.post("/chat", async (req, res) => {
       if (knowledgeMatches.length > 0) {
         const context = knowledgeMatches.map(k => k.content).join('\n\n---\n\n');
         
-        const completion = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
-          temperature: 0.4,
-          max_tokens: 1200,
-          messages: [
-            { 
-              role: "system", 
-              content: `את קוקישף 🍪 — מומחית ל-meal prep ותכנון בישולים טבעוניים.
+        // 🆕 בניית הודעות עם היסטוריה
+        const messages = [
+          { 
+            role: "system", 
+            content: `את קוקישף 🍪 — מומחית ל-meal prep ותכנון בישולים טבעוניים.
 
 יש לך גישה למאגר ידע מקצועי על:
 - Meal Prep (בישול מראש)
 - Production Flow (סדר פעולות בישול)
 - תכנון מטבח יעיל
 
-כשעונה על שאלות - השתמשי במידע מההקשר שניתן לך, אבל תני תשובה טבעית, ידידותית ומעשית.`
-            },
-            { 
-              role: "user", 
-              content: `הקשר רלוונטי ממאגר הידע:\n\n${context}\n\nשאלת המשתמש: ${m}` 
-            }
-          ]
+כשעונה על שאלות - השתמשי במידע מההקשר שניתן לך, אבל תני תשובה טבעית, ידידותית ומעשית.
+
+הקשר רלוונטי ממאגר הידע:
+${context}`
+          },
+          ...conversationHistory // 🆕 כל ההיסטוריה
+        ];
+        
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          temperature: 0.4,
+          max_tokens: 1500,
+          messages: messages
         });
 
         const reply = completion.choices?.[0]?.message?.content || "לא הצלחתי לענות.";
@@ -396,7 +398,6 @@ app.post("/chat", async (req, res) => {
 
       const reply = completion.choices?.[0]?.message?.content || "לא הצלחתי להמליץ כרגע.";
       
-      // 🆕 שמירת ההמלצות בזיכרון
       const recommendedTitles = [];
       recipes.slice(0, 50).forEach(r => {
         if (reply.includes(r.title)) {
@@ -406,7 +407,6 @@ app.post("/chat", async (req, res) => {
       
       if (recommendedTitles.length > 0) {
         recentRecommendations.set(session, recommendedTitles);
-        // מחיקה אחרי 10 דקות
         setTimeout(() => recentRecommendations.delete(session), 600000);
       }
       
@@ -431,22 +431,24 @@ app.post("/chat", async (req, res) => {
       return res.json({ reply: formattedHTML });
     }
 
-    // שאלות כלליות
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0.4,
-      max_tokens: 900,
-      messages: [
-        { 
-          role: "system", 
-          content: `את קוקישף 🍪 — עוזרת קולינרית טבעונית מבית קוקי כיף. את עונה בעברית, בחום ובידידותיות.
+    // שאלות כלליות - 🆕 עם היסטוריה
+    const messages = [
+      { 
+        role: "system", 
+        content: `את קוקישף 🍪 — עוזרת קולינרית טבעונית מבית קוקי כיף. את עונה בעברית, בחום ובידידותיות.
 
 יש לך גישה למאגר של 269 מתכונים טבעוניים ומאגר ידע מקצועי על meal prep ותכנון בישולים.
 
 עני תמיד בטון חם, ידידותי ומעודד!`
-        },
-        { role: "user", content: m }
-      ]
+      },
+      ...conversationHistory // 🆕 כל ההיסטוריה
+    ];
+    
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      temperature: 0.4,
+      max_tokens: 1200,
+      messages: messages
     });
 
     const reply = completion.choices?.[0]?.message?.content || "לא התקבלה תשובה.";
