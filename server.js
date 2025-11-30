@@ -1,4 +1,4 @@
-// Updated: 29.11.2025 - תיקון זיהוי בקשות לסדר פעולות
+// Updated: 29.11.2025 - הוספת בדיקה למה GPT מקבל + הפחתת המצאות
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -61,7 +61,7 @@ function calculateSimilarity(str1, str2) {
 
 function isRequestForPreviousRecipes(text) {
   const lower = text.toLowerCase();
-  return /תני לי אותם|כתבי אותם|תציגי אותם|תני לי את המתכונים|הצג אותם|אני רוצה אותם/.test(lower);
+  return /תני לי אותם|כתבי אותם|תציגי אותם|תני לי את המתכונים|הצג אותם|אני רוצה אותם|תנילי אותם/.test(lower);
 }
 
 function isRecommendationRequest(text) {
@@ -82,6 +82,25 @@ function isRecommendationRequest(text) {
   return recommendationPatterns.some(pattern => pattern.test(lower));
 }
 
+function isKnowledgeQuestion(text) {
+  const lower = text.toLowerCase();
+  
+  const knowledgeKeywords = [
+    'meal prep', 'מיל פרפ', 'מיילפרפ', 'בישול מראש',
+    'סדר בישול', 'flow', 'פלו', 'תכנון בישול',
+    'איך לארגן', 'סדר פעולות', 'תזמון', 'תכנית פעולות',
+    'סלט בצנצנת', 'חלבון טבעוני', 'בסיסים',
+    'תנור', 'כיריים', 'batching', 'תחנות עבודה',
+    'תכיני לי סדר', 'בני לי תכנית', 'איך לעבוד יעיל',
+    'תכנני את הבישול', 'איך לבשל את כל', 'הכנה מסודרת',
+    'לעבוד איתו בצורה יעילה', 'סדר עבודה', 'תכנון יום בישול',
+    'איך להתארגן', 'לוח זמנים', 'סדר הכנה', 'רשימת פעולות',
+    'לפעול לפי', 'ביעילות'
+  ];
+  
+  return knowledgeKeywords.some(keyword => lower.includes(keyword));
+}
+
 function isSpecificRecipeRequest(text) {
   const lower = text.toLowerCase();
   
@@ -98,24 +117,6 @@ function isSpecificRecipeRequest(text) {
   ];
   
   return foodKeywords.some(keyword => lower.includes(keyword));
-}
-
-function isKnowledgeQuestion(text) {
-  const lower = text.toLowerCase();
-  
-  const knowledgeKeywords = [
-    'meal prep', 'מיל פרפ', 'מיילפרפ', 'בישול מראש',
-    'סדר בישול', 'flow', 'פלו', 'תכנון בישול',
-    'איך לארגן', 'סדר פעולות', 'תזמון', 'תכנית פעולות',
-    'סלט בצנצנת', 'חלבון טבעוני', 'בסיסים',
-    'תנור', 'כיריים', 'batching', 'תחנות עבודה',
-    'תכיני לי סדר', 'בני לי תכנית', 'איך לעבוד יעיל',
-    'תכנני את הבישול', 'איך לבשל את כל', 'הכנה מסודרת',
-    'לעבוד איתו בצורה יעילה', 'סדר עבודה', 'תכנון יום בישול',
-    'איך להתארגן', 'לוח זמנים', 'סדר הכנה'
-  ];
-  
-  return knowledgeKeywords.some(keyword => lower.includes(keyword));
 }
 
 function searchKnowledge(query) {
@@ -188,6 +189,29 @@ async function formatRecipeWithGPT(recipe) {
   const ingredients = recipe.ingredients_text || "";
   const instructions = recipe.instructions_text || "";
   
+  // 🆕 לוג לבדיקה - מה בדיוק GPT מקבל
+  console.log("📋 DEBUG - מתכון שנשלח ל-GPT:");
+  console.log("כותרת:", title);
+  console.log("מצרכים (תווים ראשונים):", ingredients.substring(0, 200));
+  console.log("שלבים (תווים ראשונים):", instructions.substring(0, 200));
+  
+  // אם אין מצרכים או שלבים - החזר שגיאה מיידית
+  if (!ingredients || ingredients.length < 10) {
+    console.error("❌ אין מצרכים במתכון!");
+    return `<div style="direction:rtl;padding:20px;background:#fff3e0;">
+      <h2>${title}</h2>
+      <p>⚠️ המתכון הזה לא זמין כרגע. נסי מתכון אחר!</p>
+    </div>`;
+  }
+  
+  if (!instructions || instructions.length < 10) {
+    console.error("❌ אין שלבים במתכון!");
+    return `<div style="direction:rtl;padding:20px;background:#fff3e0;">
+      <h2>${title}</h2>
+      <p>⚠️ המתכון הזה לא זמין כרגע. נסי מתכון אחר!</p>
+    </div>`;
+  }
+  
   const prompt = `אני נותן לך מתכון טבעוני. תפקידך לארגן אותו בפורמט HTML מסודר.
 
 כותרת: ${title}
@@ -197,6 +221,8 @@ ${ingredients}
 
 שלבי הכנה (טקסט גולמי):
 ${instructions}
+
+⚠️ חשוב מאוד: אל תמציא ואל תוסיף מידע! השתמש רק במה שכתוב למעלה!
 
 החזר HTML בפורמט הבא בדיוק (ללא markdown, ללא \`\`\`):
 
@@ -225,12 +251,13 @@ ${instructions}
 - אל תוסיף כוכביות או מספרים - רק את התוכן
 - אם יש הערות והמרות בטקסט - הוסף אותן בסעיף נפרד
 - שמור על הסטיילים בדיוק כמו בדוגמה (במיוחד המרווחים!)
+- ⚠️ אל תמציא מידע! השתמש רק במה שכתוב למעלה!
 - החזר רק HTML, ללא הסבר`;
 
   try {
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      temperature: 0.3,
+      temperature: 0.1, // 🆕 הנמכתי ל-0.1 כדי להפחית המצאות
       max_tokens: 2000,
       messages: [
         { role: "user", content: prompt }
@@ -303,18 +330,25 @@ app.post("/chat", async (req, res) => {
     
     const conversationHistory = history || [];
     
+    // 1. בקשה להציג מתכונים שהומלצו
     if (isRequestForPreviousRecipes(m) && recentRecommendations.has(session)) {
       console.log("📖 מבקש להציג מתכונים שהומלצו");
       
       const recommendedTitles = recentRecommendations.get(session);
+      console.log("📋 כותרות שנשמרו:", recommendedTitles);
+      
       const foundRecipes = [];
       
       for (const title of recommendedTitles) {
         const recipe = findBestRecipeRaw(title);
         if (recipe) {
           foundRecipes.push(recipe);
+        } else {
+          console.log(`⚠️ לא נמצא מתכון עבור: ${title}`);
         }
       }
+      
+      console.log(`✅ נמצאו ${foundRecipes.length} מתכונים מתוך ${recommendedTitles.length}`);
       
       if (foundRecipes.length > 0) {
         const htmlPromises = foundRecipes.map(r => formatRecipeWithGPT(r));
@@ -325,6 +359,7 @@ app.post("/chat", async (req, res) => {
       }
     }
     
+    // 2. שאלת ידע (knowledge)
     if (isKnowledgeQuestion(m)) {
       console.log("📚 זוהה כשאלת ידע - מחפש במאגר");
       
@@ -363,6 +398,7 @@ ${context}`
       }
     }
     
+    // 3. בקשה להמלצות
     if (isRecommendationRequest(m)) {
       console.log("💡 זוהה כבקשה להמלצות - שולח ל-GPT");
       
@@ -404,6 +440,8 @@ ${context}`
         }
       });
       
+      console.log("📋 שמירת כותרות:", recommendedTitles);
+      
       if (recommendedTitles.length > 0) {
         recentRecommendations.set(session, recommendedTitles);
         setTimeout(() => recentRecommendations.delete(session), 600000);
@@ -412,6 +450,7 @@ ${context}`
       return res.json({ reply });
     }
     
+    // 4. חיפוש מתכון ספציפי
     if (isSpecificRecipeRequest(m)) {
       console.log("🔍 זוהה כחיפוש מתכון ספציפי");
       const recipe = findBestRecipeRaw(m);
@@ -429,6 +468,7 @@ ${context}`
       return res.json({ reply: formattedHTML });
     }
 
+    // 5. שאלות כלליות
     const messages = [
       { 
         role: "system", 
