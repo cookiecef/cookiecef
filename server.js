@@ -1,4 +1,4 @@
-// Updated: 29.11.2025 - הוספת תמיכה בהיסטוריית שיחה
+// Updated: 29.11.2025 - תיקון זיהוי בקשות לסדר פעולות
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -108,7 +108,11 @@ function isKnowledgeQuestion(text) {
     'סדר בישול', 'flow', 'פלו', 'תכנון בישול',
     'איך לארגן', 'סדר פעולות', 'תזמון', 'תכנית פעולות',
     'סלט בצנצנת', 'חלבון טבעוני', 'בסיסים',
-    'תנור', 'כיריים', 'batching', 'תחנות עבודה'
+    'תנור', 'כיריים', 'batching', 'תחנות עבודה',
+    'תכיני לי סדר', 'בני לי תכנית', 'איך לעבוד יעיל',
+    'תכנני את הבישול', 'איך לבשל את כל', 'הכנה מסודרת',
+    'לעבוד איתו בצורה יעילה', 'סדר עבודה', 'תכנון יום בישול',
+    'איך להתארגן', 'לוח זמנים', 'סדר הכנה'
   ];
   
   return knowledgeKeywords.some(keyword => lower.includes(keyword));
@@ -297,10 +301,8 @@ app.post("/chat", async (req, res) => {
     const session = sessionId || 'default';
     console.log(`💬 הודעה התקבלה: "${m}"`);
     
-    // 🆕 בניית היסטוריית שיחה ל-GPT
     const conversationHistory = history || [];
     
-    // בדיקה: האם זו בקשה להציג מתכונים שהומלצו?
     if (isRequestForPreviousRecipes(m) && recentRecommendations.has(session)) {
       console.log("📖 מבקש להציג מתכונים שהומלצו");
       
@@ -323,7 +325,6 @@ app.post("/chat", async (req, res) => {
       }
     }
     
-    // בדיקה: האם זו שאלה על meal prep / flow?
     if (isKnowledgeQuestion(m)) {
       console.log("📚 זוהה כשאלת ידע - מחפש במאגר");
       
@@ -332,7 +333,6 @@ app.post("/chat", async (req, res) => {
       if (knowledgeMatches.length > 0) {
         const context = knowledgeMatches.map(k => k.content).join('\n\n---\n\n');
         
-        // 🆕 בניית הודעות עם היסטוריה
         const messages = [
           { 
             role: "system", 
@@ -348,7 +348,7 @@ app.post("/chat", async (req, res) => {
 הקשר רלוונטי ממאגר הידע:
 ${context}`
           },
-          ...conversationHistory // 🆕 כל ההיסטוריה
+          ...conversationHistory
         ];
         
         const completion = await openai.chat.completions.create({
@@ -363,7 +363,6 @@ ${context}`
       }
     }
     
-    // בדיקה: האם זו בקשה להמלצות?
     if (isRecommendationRequest(m)) {
       console.log("💡 זוהה כבקשה להמלצות - שולח ל-GPT");
       
@@ -413,7 +412,6 @@ ${context}`
       return res.json({ reply });
     }
     
-    // בדיקה: האם זו בקשה למתכון ספציפי?
     if (isSpecificRecipeRequest(m)) {
       console.log("🔍 זוהה כחיפוש מתכון ספציפי");
       const recipe = findBestRecipeRaw(m);
@@ -431,7 +429,6 @@ ${context}`
       return res.json({ reply: formattedHTML });
     }
 
-    // שאלות כלליות - 🆕 עם היסטוריה
     const messages = [
       { 
         role: "system", 
@@ -441,7 +438,7 @@ ${context}`
 
 עני תמיד בטון חם, ידידותי ומעודד!`
       },
-      ...conversationHistory // 🆕 כל ההיסטוריה
+      ...conversationHistory
     ];
     
     const completion = await openai.chat.completions.create({
