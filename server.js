@@ -1,4 +1,4 @@
-// Updated: 28.11.2025 - הוספת system prompt מפורט עם מידע על כל הטבלאות
+// Updated: 28.11.2025 - חיבור לטבלת knowledge_base
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -13,6 +13,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
 let recipes = [];
+let knowledgeBase = []; // 🆕 מאגר הידע
 
 function normalizeHebrew(text) {
   if (!text) return "";
@@ -57,7 +58,25 @@ function calculateSimilarity(str1, str2) {
   return Math.round(score);
 }
 
-function isRecipeRequest(text) {
+function isRecommendationRequest(text) {
+  const lower = text.toLowerCase();
+  
+  const recommendationPatterns = [
+    /\d+\s*מתכונים/,
+    /תני\s+לי\s+מתכונים/,
+    /המלצ/,
+    /רוצה\s+מתכונים/,
+    /אפשר\s+מתכונים/,
+    /תציע/,
+    /מה\s+אפשר/,
+    /רעיונות\s+למתכונים/,
+    /,.*מתכון/,
+  ];
+  
+  return recommendationPatterns.some(pattern => pattern.test(lower));
+}
+
+function isSpecificRecipeRequest(text) {
   const lower = text.toLowerCase();
   
   if (/מתכון|איך מכינים|תני לי|בא לי להכין|רוצה להכין|אפשר מתכון/.test(lower)) {
@@ -73,6 +92,39 @@ function isRecipeRequest(text) {
   ];
   
   return foodKeywords.some(keyword => lower.includes(keyword));
+}
+
+// 🆕 בדיקה אם השאלה קשורה למיל פרפ או flow
+function isKnowledgeQuestion(text) {
+  const lower = text.toLowerCase();
+  
+  const knowledgeKeywords = [
+    'meal prep', 'מיל פרפ', 'מיילפרפ', 'בישול מראש',
+    'סדר בישול', 'flow', 'פלו', 'תכנון בישול',
+    'איך לארגן', 'סדר פעולות', 'תזמון',
+    'סלט בצנצנת', 'חלבון טבעוני', 'בסיסים',
+    'תנור', 'כיריים', 'batching', 'תחנות עבודה'
+  ];
+  
+  return knowledgeKeywords.some(keyword => lower.includes(keyword));
+}
+
+// 🆕 חיפוש בטבלת הידע
+function searchKnowledge(query) {
+  const normalized = normalizeHebrew(query);
+  
+  // חיפוש לפי מילות מפתח או תוכן
+  const matches = knowledgeBase.filter(item => {
+    const keywords = normalizeHebrew(item.keywords || '');
+    const content = normalizeHebrew(item.content || '');
+    const topic = normalizeHebrew(item.topic || '');
+    
+    return keywords.includes(normalized) || 
+           content.includes(normalized) ||
+           topic.includes(normalized);
+  });
+  
+  return matches;
 }
 
 function findBestRecipeRaw(query) {
@@ -194,24 +246,31 @@ ${instructions}
 }
 
 async function loadAll() {
-  console.log("⏳ טוען מתכונים מ-Supabase...");
+  console.log("⏳ טוען נתונים מ-Supabase...");
   
-  const { data, error, count } = await supabase
+  // טעינת מתכונים
+  const { data: recipesData, error: recipesError, count } = await supabase
     .from("recipes_enriched_with_tags_new")
     .select("id, title, ingredients_text, instructions_text", { count: 'exact' })
     .range(0, 1000);
   
-  if (error) {
-    console.error("❌ שגיאה בטעינה:", error.message);
-    return;
+  if (recipesError) {
+    console.error("❌ שגיאה בטעינת מתכונים:", recipesError.message);
+  } else {
+    recipes = recipesData || [];
+    console.log(`✅ נטענו ${recipes.length} מתכונים (סה"כ במאגר: ${count})`);
   }
   
-  recipes = data || [];
-  console.log(`✅ נטענו ${recipes.length} מתכונים (סה"כ במאגר: ${count})`);
+  // 🆕 טעינת מאגר הידע
+  const { data: knowledgeData, error: knowledgeError } = await supabase
+    .from("knowledge_base")
+    .select("*");
   
-  if (recipes.length > 0) {
-    console.log("📋 דוגמאות כותרות:");
-    recipes.slice(0, 3).forEach(r => console.log(`   - ${r.title}`));
+  if (knowledgeError) {
+    console.error("❌ שגיאה בטעינת knowledge:", knowledgeError.message);
+  } else {
+    knowledgeBase = knowledgeData || [];
+    console.log(`✅ נטען מאגר ידע: ${knowledgeBase.length} פריטים`);
   }
 }
 
@@ -221,6 +280,7 @@ app.use(express.json());
 app.get("/", (req, res) => res.json({ 
   status: "ok", 
   recipes: recipes.length,
+  knowledge: knowledgeBase.length,
   message: "קוקישף פעיל ומוכן לשימוש 🍪"
 }));
 
@@ -235,7 +295,84 @@ app.post("/chat", async (req, res) => {
     const m = message.trim();
     console.log(`💬 הודעה התקבלה: "${m}"`);
     
-    if (isRecipeRequest(m)) {
+    // 🆕 בדיקה: האם זו שאלה על meal prep / flow?
+    if (isKnowledgeQuestion(m)) {
+      console.log("📚 זוהה כשאלת ידע - מחפש במאגר");
+      
+      const knowledgeMatches = searchKnowledge(m);
+      
+      if (knowledgeMatches.length > 0) {
+        // מצאנו מידע רלוונטי - שולחים ל-GPT עם ההקשר
+        const context = knowledgeMatches.map(k => k.content).join('\n\n---\n\n');
+        
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          temperature: 0.4,
+          max_tokens: 1200,
+          messages: [
+            { 
+              role: "system", 
+              content: `את קוקישף 🍪 — מומחית ל-meal prep ותכנון בישולים טבעוניים.
+
+יש לך גישה למאגר ידע מקצועי על:
+- Meal Prep (בישול מראש)
+- Production Flow (סדר פעולות בישול)
+- תכנון מטבח יעיל
+
+כשעונה על שאלות - השתמשי במידע מההקשר שניתן לך, אבל תני תשובה טבעית, ידידותית ומעשית.`
+            },
+            { 
+              role: "user", 
+              content: `הקשר רלוונטי ממאגר הידע:\n\n${context}\n\nשאלת המשתמש: ${m}` 
+            }
+          ]
+        });
+
+        const reply = completion.choices?.[0]?.message?.content || "לא הצלחתי לענות.";
+        return res.json({ reply });
+      }
+    }
+    
+    // בדיקה: האם זו בקשה להמלצות?
+    if (isRecommendationRequest(m)) {
+      console.log("💡 זוהה כבקשה להמלצות - שולח ל-GPT");
+      
+      const recipesList = recipes.slice(0, 50).map(r => r.title).join('\n- ');
+      
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        temperature: 0.5,
+        max_tokens: 1200,
+        messages: [
+          { 
+            role: "system", 
+            content: `את קוקישף 🍪 — עוזרת קולינרית טבעונית מבית קוקי כיף.
+
+יש לך גישה למאגר של 269 מתכונים טבעוניים מהבלוג.
+
+כשמבקשים ממך המלצות למתכונים:
+- המלצי על מתכונים ספציפיים מהרשימה למטה
+- התאימי את ההמלצות לבקשה (ארוחת צהריים/ערב, מרכיב ספציפי, וכו')
+- תני 2-4 המלצות מגוונות
+- הסבירי בקצרה למה כל מתכון מתאים
+- עודדי את המשתמשת לחפש את המתכון המלא (למשל: "כתבי 'מתכון לעוגיות שוקולד'")
+
+רשימת המתכונים הזמינים (50 ראשונים):
+- ${recipesList}
+
+עני בטון חם, ידידותי ומעודד!`
+          },
+          { role: "user", content: m }
+        ]
+      });
+
+      const reply = completion.choices?.[0]?.message?.content || "לא הצלחתי להמליץ כרגע.";
+      return res.json({ reply });
+    }
+    
+    // בדיקה: האם זו בקשה למתכון ספציפי?
+    if (isSpecificRecipeRequest(m)) {
+      console.log("🔍 זוהה כחיפוש מתכון ספציפי");
       const recipe = findBestRecipeRaw(m);
       
       if (!recipe) {
@@ -251,7 +388,7 @@ app.post("/chat", async (req, res) => {
       return res.json({ reply: formattedHTML });
     }
 
-    // שאלות כלליות - עם system prompt מפורט
+    // שאלות כלליות
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.4,
@@ -261,31 +398,9 @@ app.post("/chat", async (req, res) => {
           role: "system", 
           content: `את קוקישף 🍪 — עוזרת קולינרית טבעונית מבית קוקי כיף. את עונה בעברית, בחום ובידידותיות.
 
-יש לך גישה לנתונים ממספר מקורות מידע במערכת קוקי כיף:
+יש לך גישה למאגר של 269 מתכונים טבעוניים ומאגר ידע מקצועי על meal prep ותכנון בישולים.
 
-📊 מאגרי המידע שלך:
-1. **מתכונים טבעוניים** - 269 מתכונים מלאים מהבלוג של קוקי כיף
-2. **תחליפים** (substitutions_clean) - מידע על איך להחליף רכיבים בבישול ואפייה טבעונית
-3. **ערכים תזונתיים** (nutrition_lookup_v2) - קלוריות, חלבון, פחמימות, שומן לכל רכיב
-4. **המרות יחידות** (units_densities_lookup_v2) - המרה מדויקת בין כוסות, גרמים, מ"ל
-5. **מוצרים טבעוניים** (vegan_lookup_full) - זיהוי מוצרים טבעוניים והמלצות
-6. **רשימות קניות ומיל פרפ** (shopping_list_meal_prep_with_recipes) - דוגמאות לתכנון ארוחות
-7. **קטלוג מוצרים** (master_list_items) - רשימת פריטים וקטגוריות למטבח
-
-🎯 איך את משתמשת במידע:
-- כשמבקשים **מתכון** → תני להם לחפש במאגר המתכונים
-- כששואלים **איך להחליף רכיב** → ספרי על תחליפים אפשריים מהידע שלך
-- כששואלים על **קלוריות או תזונה** → הסבירי שיש לך מידע תזונתי אבל תני תשובה כללית
-- כשצריך **להמיר כמויות** → עזרי עם המרות בסיסיות
-- כששואלים **האם משהו טבעוני** → ספרי מהידע שלך על מוצרים טבעוניים
-- כששואלים על **רשימת קניות או תכנון** → הסבירי עקרונות ותני טיפים
-
-⚠️ חשוב:
-- אל תמציאי מידע! אם אין לך נתון מדויק, תסבירי שאת יכולה לתת מידע כללי
-- תמיד עני בטון חם, ידידותי ומעודד
-- אם מבקשים משהו ספציפי שלא במאגר - תציעי חלופות קרובות
-
-💚 את כאן כדי לעזור, לעודד ולהפוך בישול טבעוני לנגיש ומהנה!`
+עני תמיד בטון חם, ידידותי ומעודד!`
         },
         { role: "user", content: m }
       ]
